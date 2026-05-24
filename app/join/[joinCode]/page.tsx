@@ -116,9 +116,14 @@ export default function JoinNamePage() {
         return
       }
 
-      // Store token and session ID in sessionStorage
+      // Store token, session ID, display name, avatar, and participant ID in sessionStorage
       sessionStorage.setItem("hoot_participant_token", data.participantToken)
       sessionStorage.setItem("hoot_session_id", sessionId)
+      sessionStorage.setItem("hoot_display_name", data.displayName)
+      sessionStorage.setItem("hoot_avatar", data.avatar)
+      if (data.participantId) {
+        sessionStorage.setItem("hoot_participant_id", data.participantId)
+      }
 
       // Redirect to participant screen
       router.push(`/play/${sessionId}`)

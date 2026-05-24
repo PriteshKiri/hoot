@@ -293,7 +293,9 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     .update({ total_score: participant.total_score + scoreAwarded })
     .eq("id", participant.id)
 
-  // Step 9: Broadcast answer_count_updated event
+  // Step 9: Broadcast answer_count_updated event via Supabase REST broadcast API
+  // (server-side JS channel.send() requires an active WebSocket subscription,
+  //  so we use the HTTP broadcast endpoint with the service role key instead)
   const { count: answeredCount } = await supabase
     .from("participant_answers")
     .select("id", { count: "exact", head: true })
@@ -305,14 +307,29 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     .select("id", { count: "exact", head: true })
     .eq("session_id", sessionId)
 
-  await supabase.channel(`session:${sessionId}`).send({
-    type: "broadcast",
-    event: "answer_count_updated",
-    payload: {
-      questionId,
-      answeredCount: answeredCount ?? 0,
-      totalParticipants: totalParticipants ?? 0,
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!.replace(/\/$/, "")
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+
+  await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${serviceRoleKey}`,
+      "apikey": serviceRoleKey,
     },
+    body: JSON.stringify({
+      messages: [
+        {
+          topic: `realtime:session:${sessionId}`,
+          event: "answer_count_updated",
+          payload: {
+            questionId,
+            answeredCount: answeredCount ?? 0,
+            totalParticipants: totalParticipants ?? 0,
+          },
+        },
+      ],
+    }),
   })
 
   // Step 10: Return result

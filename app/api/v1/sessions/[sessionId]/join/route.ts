@@ -259,6 +259,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   return NextResponse.json(
     {
       participantToken,
+      participantId: participant.id,
       sessionId,
       displayName,
       avatar,

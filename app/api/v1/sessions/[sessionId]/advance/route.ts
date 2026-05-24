@@ -4,6 +4,38 @@ import { createServiceClient } from "@/lib/supabase/service"
 
 type RouteContext = { params: Promise<{ sessionId: string }> }
 
+/**
+ * Broadcasts a Realtime event via the Supabase REST broadcast API.
+ * Server-side JS channel.send() requires an active WebSocket subscription,
+ * so we use the HTTP endpoint with the service role key instead.
+ */
+async function broadcastEvent(
+  sessionId: string,
+  event: string,
+  payload: Record<string, unknown>
+) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!.replace(/\/$/, "")
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+
+  await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${serviceRoleKey}`,
+      "apikey": serviceRoleKey,
+    },
+    body: JSON.stringify({
+      messages: [
+        {
+          topic: `realtime:session:${sessionId}`,
+          event,
+          payload,
+        },
+      ],
+    }),
+  })
+}
+
 type SessionStatus =
   | "lobby"
   | "countdown"
@@ -312,11 +344,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     questionStartedAt: updatedSession.question_started_at ?? null,
   }
 
-  await supabase.channel(`session:${sessionId}`).send({
-    type: "broadcast",
-    event: "session_state_changed",
-    payload: broadcastPayload,
-  })
+  await broadcastEvent(sessionId, "session_state_changed", broadcastPayload as unknown as Record<string, unknown>)
 
   // ─── Task 12.1: Results reveal ───────────────────────────────────────────
   // When transitioning to 'results', compute and broadcast response distribution
@@ -389,15 +417,11 @@ async function broadcastResultsRevealed(
     return { optionId: option.id, count, percentage }
   })
 
-  await supabase.channel(`session:${sessionId}`).send({
-    type: "broadcast",
-    event: "results_revealed",
-    payload: {
-      questionId,
-      correctOptionIds,
-      distribution,
-      totalResponses,
-    },
+  await broadcastEvent(sessionId, "results_revealed", {
+    questionId,
+    correctOptionIds,
+    distribution,
+    totalResponses,
   })
 }
 
@@ -489,12 +513,8 @@ async function broadcastLeaderboard(
   await Promise.all(rankUpdates)
 
   // Broadcast leaderboard_updated
-  await supabase.channel(`session:${sessionId}`).send({
-    type: "broadcast",
-    event: "leaderboard_updated",
-    payload: {
-      isFinal,
-      entries,
-    },
+  await broadcastEvent(sessionId, "leaderboard_updated", {
+    isFinal,
+    entries,
   })
 }
