@@ -24,7 +24,9 @@ export function PublishPanel({ eventId, status, joinCode }: PublishPanelProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const joinUrl = joinCode ? `https://hoot.com/join/${joinCode}` : null
+  const joinUrl = joinCode
+    ? `${typeof window !== "undefined" ? window.location.origin : process.env.NEXT_PUBLIC_APP_URL ?? "https://hoot-puce.vercel.app"}/join/${joinCode}`
+    : null
 
   async function handlePublish() {
     setLoading(true)

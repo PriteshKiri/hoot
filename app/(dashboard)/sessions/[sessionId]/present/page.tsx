@@ -252,7 +252,7 @@ export default function PresentPage() {
   const participantCount = participantList.length
   const joinCode = session?.events?.join_code ?? null
   const joinUrl = joinCode
-    ? `${typeof window !== "undefined" ? window.location.origin : "https://hoot.com"}/join/${joinCode}`
+    ? `${typeof window !== "undefined" ? window.location.origin : process.env.NEXT_PUBLIC_APP_URL ?? "https://hoot-puce.vercel.app"}/join/${joinCode}`
     : ""
 
   if (loadError) {
@@ -386,7 +386,7 @@ export default function PresentPage() {
             <div className="rounded-xl border bg-card p-6 text-center space-y-3">
               <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Join Code</p>
               <p className="text-5xl font-mono font-bold tracking-widest text-primary" aria-label={`Join code: ${joinCode}`}>{joinCode ?? "—"}</p>
-              <p className="text-xs text-muted-foreground">Go to <span className="font-semibold">{typeof window !== "undefined" ? window.location.host : "hoot.com"}/join</span></p>
+              <p className="text-xs text-muted-foreground">Go to <span className="font-semibold">{typeof window !== "undefined" ? window.location.host : new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://hoot-puce.vercel.app").host}/join</span></p>
             </div>
             {joinUrl && (
               <div className="rounded-xl border bg-card p-6 flex flex-col items-center gap-3">
