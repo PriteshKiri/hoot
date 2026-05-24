@@ -100,6 +100,7 @@ export default function PresentPage() {
   const [totalParticipants, setTotalParticipants] = useState(0)
   const [resultsData, setResultsData] = useState<ResultsRevealedPayload | null>(null)
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardUpdatedPayload | null>(null)
+  const [wordCloudData, setWordCloudData] = useState<Array<{ word: string; count: number }>>([])
   const [advancing, setAdvancing] = useState(false)
 
   // Load session data
@@ -180,6 +181,7 @@ export default function PresentPage() {
           })
           setQuestionStartedAt(payload.questionStartedAt ?? null)
           setAnsweredCount(0)
+          setWordCloudData([])
         }
       })
       .on("broadcast", { event: "results_revealed" }, ({ payload }) => {
@@ -192,6 +194,10 @@ export default function PresentPage() {
         const p = payload as AnswerCountPayload
         setAnsweredCount(p.answeredCount)
         setTotalParticipants(p.totalParticipants)
+      })
+      .on("broadcast", { event: "word_cloud_updated" }, ({ payload }) => {
+        const p = payload as { questionId: string; words: Array<{ word: string; count: number }> }
+        setWordCloudData(p.words)
       })
       .subscribe()
 
@@ -315,6 +321,7 @@ export default function PresentPage() {
 
   // ── Question ───────────────────────────────────────────────────────────────
   if (sessionStatus === "question" && currentQuestion) {
+    const isOpenText = currentQuestion.question_type === "open_text"
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <PresenterQuestionView
@@ -323,6 +330,14 @@ export default function PresentPage() {
           answeredCount={answeredCount}
           totalParticipants={totalParticipants}
         />
+        {isOpenText && (
+          <div className="max-w-3xl mx-auto w-full px-6 pb-4">
+            <div className="rounded-xl border bg-card p-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Live Word Cloud</p>
+              <WordCloudView words={wordCloudData} />
+            </div>
+          </div>
+        )}
         <SessionControls
           onNext={handleAdvance}
           advancing={advancing}
@@ -673,8 +688,51 @@ function FinalLeaderboardView({ entries }: { entries: LeaderboardEntry[] }) {
   )
 }
 
+/**
+ * WordCloudView — renders word frequencies as a proportional word cloud.
+ * Font-size scales linearly from 14px (min) to 48px (max) based on count.
+ * Requirements: 14.2, 14.3
+ */
+function WordCloudView({ words }: { words: Array<{ word: string; count: number }> }) {
+  if (words.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
+        Waiting for responses…
+      </div>
+    )
+  }
+  const maxCount = Math.max(...words.map((w) => w.count))
+  const minSize = 14
+  const maxSize = 48
+  return (
+    <div className="flex flex-wrap gap-3 items-center justify-center p-6" aria-label="Word cloud" role="img">
+      {words.map(({ word, count }) => {
+        const size = maxCount > 1
+          ? minSize + Math.round(((count - 1) / (maxCount - 1)) * (maxSize - minSize))
+          : maxSize
+        const opacity = 0.5 + 0.5 * (count / maxCount)
+        return (
+          <span
+            key={word}
+            style={{ fontSize: `${size}px`, opacity, lineHeight: 1.2 }}
+            className="font-bold text-primary transition-all duration-300"
+            title={`${word}: ${count}`}
+          >
+            {word}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 function SessionControls({
-  onNext, onEnd, advancing, error, showNext, showEnd,
+  onNext,
+  onEnd,
+  advancing,
+  error,
+  showNext,
+  showEnd,
 }: {
   onNext?: () => void
   onEnd?: () => void

@@ -53,10 +53,46 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     )
   }
 
-  const { joinCode, displayName, avatar } = body as {
+  const { joinCode, displayName, avatar, participantToken: existingToken } = body as {
     joinCode?: unknown
     displayName?: unknown
     avatar?: unknown
+    participantToken?: unknown
+  }
+
+  // ── Reconnection path: returning participant with existing token ──────────
+  if (typeof existingToken === "string" && existingToken.trim()) {
+    const { data: existingParticipant, error: tokenError } = await supabase
+      .from("session_participants")
+      .select("id, session_id, display_name, avatar, total_score, participant_token")
+      .eq("participant_token", existingToken.trim())
+      .eq("session_id", sessionId)
+      .single()
+
+    if (!tokenError && existingParticipant) {
+      // Fetch current session state for restoration
+      const { data: session } = await supabase
+        .from("sessions")
+        .select("id, status, current_question_id, current_question_index, question_started_at")
+        .eq("id", sessionId)
+        .single()
+
+      return NextResponse.json(
+        {
+          participantToken: existingParticipant.participant_token,
+          participantId: existingParticipant.id,
+          sessionId,
+          displayName: existingParticipant.display_name,
+          avatar: existingParticipant.avatar,
+          totalScore: existingParticipant.total_score,
+          sessionStatus: session?.status ?? "lobby",
+          currentQuestionId: session?.current_question_id ?? null,
+          reconnected: true,
+        },
+        { status: 200 }
+      )
+    }
+    // Token not found — fall through to normal join flow
   }
 
   // Basic presence checks

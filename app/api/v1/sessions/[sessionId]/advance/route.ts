@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
+import { generateAnalyticsSnapshots } from "@/lib/analytics"
 
 type RouteContext = { params: Promise<{ sessionId: string }> }
 
@@ -361,6 +362,15 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       session.current_question_id,
       nextStatus === "final_leaderboard"
     )
+  }
+
+  // ─── Task 15.1: Analytics snapshot generation ────────────────────────────
+  // When transitioning to 'ended', generate analytics snapshots
+  if (nextStatus === "ended") {
+    // Fire-and-forget — don't block the response
+    generateAnalyticsSnapshots(sessionId).catch(() => {
+      // Log but don't fail the request
+    })
   }
 
   return NextResponse.json({ session: updatedSession })

@@ -24,14 +24,16 @@ type RouteContext = { params: Promise<{ sessionId: string }> }
  *   2. Look up participant by token → 401 if not found
  *   3. Verify session is in 'question' state and current_question_id matches → 409
  *   4. Check time not expired: (now - question_started_at) < time_limit * 1000 → 409 TIME_EXPIRED
- *   5. Check for existing answer (UNIQUE constraint) → 409 ANSWER_ALREADY_SUBMITTED
- *   6. Calculate score using calculateScore()
- *   7. Insert participant_answers row
- *   8. Update session_participants.total_score atomically
- *   9. Broadcast answer_count_updated event
- *   10. Return { scoreAwarded, isCorrect }
+ *   5. Validate open_text_response ≤ 200 chars → 400
+ *   6. Check for existing answer (UNIQUE constraint) → 409 ANSWER_ALREADY_SUBMITTED
+ *   7. Calculate score using calculateScore()
+ *   8. Insert participant_answers row
+ *   9. Update session_participants.total_score atomically
+ *   10. Broadcast answer_count_updated event
+ *   11. For open_text questions, broadcast word_cloud_updated event
+ *   12. Return { scoreAwarded, isCorrect }
  *
- * Requirements: 10.1–10.6
+ * Requirements: 10.1–10.6, 14.1, 14.2, 14.3, 14.5
  */
 export async function POST(request: NextRequest, { params }: RouteContext) {
   const { sessionId } = await params
@@ -95,12 +97,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
   if (participantError || !participant) {
     return NextResponse.json(
-      {
-        error: {
-          code: "UNAUTHORIZED",
-          message: "Invalid participant token.",
-        },
-      },
+      { error: { code: "UNAUTHORIZED", message: "Invalid participant token." } },
       { status: 401 }
     )
   }
@@ -121,12 +118,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
   if (session.status !== "question") {
     return NextResponse.json(
-      {
-        error: {
-          code: "QUESTION_NOT_ACTIVE",
-          message: "No question is currently active.",
-        },
-      },
+      { error: { code: "QUESTION_NOT_ACTIVE", message: "No question is currently active." } },
       { status: 409 }
     )
   }
@@ -148,20 +140,10 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   const now = Date.now()
   const elapsedMs = now - questionStartedAt
 
-  // Fetch question to get time_limit
+  // Fetch question to get time_limit and answer options
   const { data: question, error: questionError } = await supabase
     .from("questions")
-    .select(
-      `
-      id,
-      question_type,
-      time_limit,
-      answer_options (
-        id,
-        is_correct
-      )
-    `
-    )
+    .select("id, question_type, time_limit, answer_options(id, is_correct)")
     .eq("id", questionId)
     .single()
 
@@ -177,17 +159,27 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
   if (elapsedMs >= timeLimitMs) {
     return NextResponse.json(
-      {
-        error: {
-          code: "TIME_EXPIRED",
-          message: "The time limit for this question has expired.",
-        },
-      },
+      { error: { code: "TIME_EXPIRED", message: "The time limit for this question has expired." } },
       { status: 409 }
     )
   }
 
-  // Step 5: Check for existing answer
+  // Step 5: Validate open_text_response length (≤ 200 chars)
+  const openTextStr = typeof openTextResponse === "string" ? openTextResponse : null
+  if (openTextStr !== null && openTextStr.length > 200) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Open-text response must be 200 characters or fewer.",
+          field: "openTextResponse",
+        },
+      },
+      { status: 400 }
+    )
+  }
+
+  // Step 6: Check for existing answer
   const { data: existingAnswer } = await supabase
     .from("participant_answers")
     .select("id")
@@ -207,7 +199,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     )
   }
 
-  // Step 6: Calculate score
+  // Step 7: Calculate score
   const questionType = question.question_type as string
   const answerOptions = question.answer_options as Array<{ id: string; is_correct: boolean }>
 
@@ -217,36 +209,26 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   if (questionType === "single_select" || questionType === "image_choice") {
     const selectedIds = Array.isArray(selectedOptionIds) ? (selectedOptionIds as string[]) : []
     const selectedId = selectedIds[0]
-    if (selectedId) {
-      const selectedOption = answerOptions.find((o) => o.id === selectedId)
-      isCorrect = selectedOption?.is_correct ?? false
-    } else {
-      isCorrect = false
-    }
+    isCorrect = selectedId
+      ? (answerOptions.find((o) => o.id === selectedId)?.is_correct ?? false)
+      : false
     scoreAwarded = calculateScore(isCorrect, remainingTimeMs, timeLimitMs)
   } else if (questionType === "multi_select") {
     const selectedIds = Array.isArray(selectedOptionIds)
       ? (selectedOptionIds as string[]).sort()
       : []
-    const correctIds = answerOptions
-      .filter((o) => o.is_correct)
-      .map((o) => o.id)
-      .sort()
-
-    // Correct only if selected IDs exactly match all correct IDs
+    const correctIds = answerOptions.filter((o) => o.is_correct).map((o) => o.id).sort()
     isCorrect =
       selectedIds.length === correctIds.length &&
       selectedIds.every((id, i) => id === correctIds[i])
     scoreAwarded = calculateScore(isCorrect, remainingTimeMs, timeLimitMs)
   } else {
-    // open_text or rating_scale: always 0 points, is_correct = null
+    // open_text or rating_scale: always 0 points
     isCorrect = null
     scoreAwarded = 0
   }
 
-  // Step 7: Insert participant_answers row
-  const responseTimeMs = elapsedMs
-
+  // Step 8: Insert participant_answers row
   const { error: insertError } = await supabase.from("participant_answers").insert({
     session_id: sessionId,
     participant_id: participant.id,
@@ -255,20 +237,15 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       Array.isArray(selectedOptionIds) && (selectedOptionIds as string[]).length > 0
         ? selectedOptionIds
         : null,
-    open_text_response:
-      typeof openTextResponse === "string" ? openTextResponse : null,
+    open_text_response: openTextStr,
     rating_value: typeof ratingValue === "number" ? ratingValue : null,
     is_correct: isCorrect,
     score_awarded: scoreAwarded,
-    response_time_ms: responseTimeMs,
+    response_time_ms: elapsedMs,
   })
 
   if (insertError) {
-    // Handle unique constraint violation (race condition — first-submission-wins)
-    if (
-      insertError.code === "23505" ||
-      insertError.message?.toLowerCase().includes("unique")
-    ) {
+    if (insertError.code === "23505" || insertError.message?.toLowerCase().includes("unique")) {
       return NextResponse.json(
         {
           error: {
@@ -279,23 +256,19 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         { status: 409 }
       )
     }
-
     return NextResponse.json(
       { error: { code: "SERVER_ERROR", message: "Failed to submit answer." } },
       { status: 500 }
     )
   }
 
-  // Step 8: Update session_participants.total_score atomically using raw SQL increment
-  // This avoids a read-modify-write race condition by using a server-side increment.
+  // Step 9: Update session_participants.total_score
   await supabase
     .from("session_participants")
     .update({ total_score: participant.total_score + scoreAwarded })
     .eq("id", participant.id)
 
-  // Step 9: Broadcast answer_count_updated event via Supabase REST broadcast API
-  // (server-side JS channel.send() requires an active WebSocket subscription,
-  //  so we use the HTTP broadcast endpoint with the service role key instead)
+  // Step 10: Broadcast answer_count_updated
   const { count: answeredCount } = await supabase
     .from("participant_answers")
     .select("id", { count: "exact", head: true })
@@ -314,8 +287,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${serviceRoleKey}`,
-      "apikey": serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      apikey: serviceRoleKey,
     },
     body: JSON.stringify({
       messages: [
@@ -332,6 +305,52 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }),
   })
 
-  // Step 10: Return result
+  // Step 11: Word cloud aggregation for open_text questions (Task 16.1)
+  if (questionType === "open_text" && openTextStr && openTextStr.trim()) {
+    const { data: allAnswers } = await supabase
+      .from("participant_answers")
+      .select("open_text_response")
+      .eq("session_id", sessionId)
+      .eq("question_id", questionId)
+      .not("open_text_response", "is", null)
+
+    const freqMap = new Map<string, number>()
+    for (const answer of allAnswers ?? []) {
+      const resp = answer.open_text_response as string | null
+      if (!resp) continue
+      const tokens = resp
+        .toLowerCase()
+        .split(/[^a-z0-9']+/)
+        .filter((w: string) => w.length >= 2)
+      for (const token of tokens) {
+        freqMap.set(token, (freqMap.get(token) ?? 0) + 1)
+      }
+    }
+
+    const wordCloudWords = Array.from(freqMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 50)
+      .map(([word, count]) => ({ word, count }))
+
+    await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceRoleKey}`,
+        apikey: serviceRoleKey,
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            topic: `realtime:session:${sessionId}`,
+            event: "word_cloud_updated",
+            payload: { questionId, words: wordCloudWords },
+          },
+        ],
+      }),
+    })
+  }
+
+  // Step 12: Return result
   return NextResponse.json({ scoreAwarded, isCorrect }, { status: 201 })
 }

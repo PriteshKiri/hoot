@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { BUILT_IN_THEMES, AVAILABLE_FONTS } from "@/lib/themes"
 
 type RouteContext = { params: Promise<{ eventId: string }> }
 
@@ -92,7 +93,12 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     )
   }
 
-  const { title, description } = body as { title?: unknown; description?: unknown }
+  const { title, description, theme_id, custom_theme } = body as {
+    title?: unknown
+    description?: unknown
+    theme_id?: unknown
+    custom_theme?: unknown
+  }
 
   const updates: Record<string, unknown> = {}
 
@@ -158,6 +164,59 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       }
     }
     updates.description = description
+  }
+
+  // Validate and apply theme_id if provided
+  if (theme_id !== undefined) {
+    if (theme_id !== null) {
+      const validThemeIds = BUILT_IN_THEMES.map((t) => t.id)
+      if (typeof theme_id !== "string" || !validThemeIds.includes(theme_id)) {
+        return NextResponse.json(
+          {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: `theme_id must be one of: ${validThemeIds.join(", ")}.`,
+              field: "theme_id",
+            },
+          },
+          { status: 400 }
+        )
+      }
+    }
+    updates.theme_id = theme_id
+  }
+
+  // Validate and apply custom_theme if provided
+  if (custom_theme !== undefined) {
+    if (custom_theme !== null) {
+      if (typeof custom_theme !== "object" || Array.isArray(custom_theme)) {
+        return NextResponse.json(
+          {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "custom_theme must be an object.",
+              field: "custom_theme",
+            },
+          },
+          { status: 400 }
+        )
+      }
+      const ct = custom_theme as Record<string, unknown>
+      const validFontValues: string[] = AVAILABLE_FONTS.map((f) => f.value)
+      if (ct.fontFamily !== undefined && !validFontValues.includes(ct.fontFamily as string)) {
+        return NextResponse.json(
+          {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: `custom_theme.fontFamily must be one of: ${validFontValues.join(", ")}.`,
+              field: "custom_theme",
+            },
+          },
+          { status: 400 }
+        )
+      }
+    }
+    updates.custom_theme = custom_theme
   }
 
   if (Object.keys(updates).length === 0) {

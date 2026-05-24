@@ -86,6 +86,10 @@ export default function PlayPage() {
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([])
 
   const channelRef = useRef<RealtimeChannel | null>(null)
+  // Reconnection state
+  const [connectionStatus, setConnectionStatus] = useState<"connected" | "reconnecting" | "failed">("connected")
+  const reconnectAttemptsRef = useRef(0)
+  const reconnectTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Read token from sessionStorage and load session data
   useEffect(() => {
@@ -143,16 +147,78 @@ export default function PlayPage() {
       })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
+          setConnectionStatus("connected")
+          reconnectAttemptsRef.current = 0
+          if (reconnectTimerRef.current) {
+            clearInterval(reconnectTimerRef.current)
+            reconnectTimerRef.current = null
+          }
           await channel.track({
             participantId: participantId ?? presenceKey,
             displayName: displayName || "Participant",
             avatar: avatar || "🦉",
             joinedAt: new Date().toISOString(),
           })
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          setConnectionStatus("reconnecting")
+          // Retry every 2 seconds for up to 60 seconds (30 attempts)
+          if (!reconnectTimerRef.current) {
+            reconnectTimerRef.current = setInterval(async () => {
+              reconnectAttemptsRef.current += 1
+              if (reconnectAttemptsRef.current > 30) {
+                setConnectionStatus("failed")
+                if (reconnectTimerRef.current) {
+                  clearInterval(reconnectTimerRef.current)
+                  reconnectTimerRef.current = null
+                }
+                return
+              }
+              // Attempt to restore state from server
+              try {
+                const res = await fetch(`/api/v1/sessions/${sessionId}`)
+                if (res.ok) {
+                  const data = await res.json()
+                  const s = data.session
+                  if (s) {
+                    setSessionStatus(s.status)
+                    if (s.current_question_id && s.status === "question") {
+                      const questions: Array<{
+                        id: string; position: number; question_type: string; text: string;
+                        image_url: string | null; time_limit: number;
+                        answer_options: Array<{ id: string; position: number; text: string | null; image_url: string | null }>
+                      }> = (s.events?.questions ?? [])
+                      const q = questions.find((q) => q.id === s.current_question_id)
+                      if (q) {
+                        setCurrentQuestion({
+                          id: q.id, text: q.text, questionType: q.question_type,
+                          imageUrl: q.image_url, timeLimitSeconds: q.time_limit,
+                          options: q.answer_options
+                            .sort((a: { position: number }, b: { position: number }) => a.position - b.position)
+                            .map((o: { id: string; text: string | null; image_url: string | null; position: number }) => ({
+                              id: o.id, text: o.text, imageUrl: o.image_url, position: o.position,
+                            })),
+                        })
+                        setQuestionStartedAt(s.question_started_at ?? null)
+                      }
+                    }
+                  }
+                }
+              } catch {
+                // Ignore — will retry
+              }
+            }, 2000)
+          }
         }
       })
 
-    return () => { supabase.removeChannel(channel); channelRef.current = null }
+    return () => {
+      supabase.removeChannel(channel)
+      channelRef.current = null
+      if (reconnectTimerRef.current) {
+        clearInterval(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
+    }
   }, [sessionId, participantToken, participantId, displayName, avatar])
 
   // Poll session status as a fallback for missed Realtime broadcasts.
@@ -249,8 +315,19 @@ export default function PlayPage() {
 
   if (!participantToken) return null
 
+  // Reconnection overlay — shown after first failure, non-blocking
+  const reconnectionBanner = connectionStatus === "reconnecting" ? (
+    <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-500 text-yellow-950 text-center text-sm font-medium py-2 px-4" role="status" aria-live="polite">
+      ⚡ Reconnecting… please wait
+    </div>
+  ) : connectionStatus === "failed" ? (
+    <div className="fixed top-0 left-0 right-0 z-50 bg-destructive text-destructive-foreground text-center text-sm font-medium py-2 px-4" role="alert">
+      Connection lost. <button onClick={() => window.location.reload()} className="underline font-bold">Tap to reload</button>
+    </div>
+  ) : null
+
   if (sessionStatus === "countdown") {
-    return <div className="min-h-screen flex items-center justify-center bg-background"><CountdownView /></div>
+    return <div className="min-h-screen flex items-center justify-center bg-background">{reconnectionBanner}<CountdownView /></div>
   }
 
   if (sessionStatus === "question" && currentQuestion) {
