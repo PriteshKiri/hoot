@@ -83,6 +83,21 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // Check for an existing non-ended session for this event
+  const { data: existingSession } = await supabase
+    .from("sessions")
+    .select("id, status")
+    .eq("event_id", eventId)
+    .neq("status", "ended")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (existingSession) {
+    // Return the existing session so the UI can navigate to it
+    return NextResponse.json({ session: existingSession }, { status: 200 })
+  }
+
   // Create the session
   const { data: session, error: insertError } = await supabase
     .from("sessions")

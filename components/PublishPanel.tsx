@@ -9,6 +9,8 @@ interface PublishPanelProps {
   eventId: string
   status: "draft" | "published" | string
   joinCode: string | null
+  /** ID of an existing non-ended session, if any */
+  activeSessionId?: string | null
 }
 
 /**
@@ -19,9 +21,11 @@ interface PublishPanelProps {
  *
  * Requirements: 4.3, 4.4
  */
-export function PublishPanel({ eventId, status, joinCode }: PublishPanelProps) {
+export function PublishPanel({ eventId, status, joinCode, activeSessionId }: PublishPanelProps) {
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
+  const [publishLoading, setPublishLoading] = useState(false)
+  const [unpublishLoading, setUnpublishLoading] = useState(false)
+  const [sessionLoading, setSessionLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const joinUrl = joinCode
@@ -29,7 +33,7 @@ export function PublishPanel({ eventId, status, joinCode }: PublishPanelProps) {
     : null
 
   async function handlePublish() {
-    setLoading(true)
+    setPublishLoading(true)
     setError(null)
     try {
       const res = await fetch(`/api/v1/events/${eventId}/publish`, {
@@ -46,12 +50,12 @@ export function PublishPanel({ eventId, status, joinCode }: PublishPanelProps) {
     } catch {
       setError("An unexpected error occurred. Please try again.")
     } finally {
-      setLoading(false)
+      setPublishLoading(false)
     }
   }
 
   async function handleUnpublish() {
-    setLoading(true)
+    setUnpublishLoading(true)
     setError(null)
     try {
       const res = await fetch(`/api/v1/events/${eventId}/publish`, {
@@ -68,12 +72,12 @@ export function PublishPanel({ eventId, status, joinCode }: PublishPanelProps) {
     } catch {
       setError("An unexpected error occurred. Please try again.")
     } finally {
-      setLoading(false)
+      setUnpublishLoading(false)
     }
   }
 
   async function handleStartSession() {
-    setLoading(true)
+    setSessionLoading(true)
     setError(null)
     try {
       const res = await fetch("/api/v1/sessions", {
@@ -90,7 +94,13 @@ export function PublishPanel({ eventId, status, joinCode }: PublishPanelProps) {
     } catch {
       setError("An unexpected error occurred. Please try again.")
     } finally {
-      setLoading(false)
+      setSessionLoading(false)
+    }
+  }
+
+  function handleResumeSession() {
+    if (activeSessionId) {
+      router.push(`/sessions/${activeSessionId}/present`)
     }
   }
 
@@ -115,10 +125,10 @@ export function PublishPanel({ eventId, status, joinCode }: PublishPanelProps) {
           </p>
           <Button
             onClick={handlePublish}
-            disabled={loading}
+            disabled={publishLoading}
             className="bg-green-600 hover:bg-green-700 text-white"
           >
-            {loading ? "Publishing…" : "Publish Event"}
+            {publishLoading ? "Publishing…" : "Publish Event"}
           </Button>
         </div>
       ) : (
@@ -181,23 +191,53 @@ export function PublishPanel({ eventId, status, joinCode }: PublishPanelProps) {
             </div>
           )}
 
+          {/* Active session notice */}
+          {activeSessionId && (
+            <div className="rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+              A session is already in progress.{" "}
+              <button
+                type="button"
+                onClick={handleResumeSession}
+                className="font-semibold underline hover:no-underline"
+              >
+                Resume session →
+              </button>
+            </div>
+          )}
+
           {/* Action buttons */}
           <div className="flex flex-wrap gap-3 pt-1">
-            <Button
-              onClick={handleStartSession}
-              disabled={loading}
-              className="bg-primary text-primary-foreground"
-            >
-              {loading ? "Starting…" : "Start Session"}
-            </Button>
+            {activeSessionId ? (
+              <Button
+                onClick={handleResumeSession}
+                className="bg-primary text-primary-foreground"
+              >
+                Resume Session
+              </Button>
+            ) : (
+              <Button
+                onClick={handleStartSession}
+                disabled={sessionLoading}
+                className="bg-primary text-primary-foreground"
+              >
+                {sessionLoading ? "Starting…" : "Start Session"}
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={handleUnpublish}
-              disabled={loading}
+              disabled={unpublishLoading || !!activeSessionId}
+              title={activeSessionId ? "End the active session before unpublishing" : undefined}
             >
-              {loading ? "Unpublishing…" : "Unpublish"}
+              {unpublishLoading ? "Unpublishing…" : "Unpublish"}
             </Button>
           </div>
+
+          {activeSessionId && (
+            <p className="text-xs text-muted-foreground">
+              End the active session before unpublishing.
+            </p>
+          )}
         </div>
       )}
     </div>

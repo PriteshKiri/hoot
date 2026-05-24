@@ -255,12 +255,13 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
     )
   }
 
-  // Check for active sessions (any session that is not 'ended')
+  // Check for truly active sessions (in-progress, not just lobby or ended)
+  const activeStatuses = ["countdown", "question", "results", "leaderboard", "final_leaderboard"]
   const { data: activeSessions, error: sessionError } = await supabase
     .from("sessions")
-    .select("id")
+    .select("id, status")
     .eq("event_id", eventId)
-    .neq("status", "ended")
+    .in("status", activeStatuses)
     .limit(1)
 
   if (sessionError) {
@@ -287,6 +288,13 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
       { status: 409 }
     )
   }
+
+  // End any stale lobby sessions before deleting the event
+  await supabase
+    .from("sessions")
+    .update({ status: "ended", ended_at: new Date().toISOString() })
+    .eq("event_id", eventId)
+    .eq("status", "lobby")
 
   const { error: deleteError } = await supabase
     .from("events")

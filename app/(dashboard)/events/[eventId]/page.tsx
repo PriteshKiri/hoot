@@ -49,6 +49,18 @@ export default async function EventEditorPage({ params }: PageProps) {
 
   const questionList = (questions ?? []) as Question[]
 
+  // Check for an existing non-ended session (lobby or in-progress)
+  const { data: activeSession } = await supabase
+    .from("sessions")
+    .select("id, status")
+    .eq("event_id", eventId)
+    .neq("status", "ended")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const activeSessionId = activeSession?.id ?? null
+
   return (
     <div className="p-8 max-w-3xl space-y-8">
       {/* Breadcrumb */}
@@ -79,6 +91,7 @@ export default async function EventEditorPage({ params }: PageProps) {
         eventId={eventId}
         status={event.status}
         joinCode={event.join_code ?? null}
+        activeSessionId={activeSessionId}
       />
 
       {/* Questions section */}
