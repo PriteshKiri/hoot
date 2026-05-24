@@ -26,6 +26,7 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId }: Pub
   const [publishLoading, setPublishLoading] = useState(false)
   const [unpublishLoading, setUnpublishLoading] = useState(false)
   const [sessionLoading, setSessionLoading] = useState(false)
+  const [stopLoading, setStopLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const joinUrl = joinCode
@@ -101,6 +102,28 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId }: Pub
   function handleResumeSession() {
     if (activeSessionId) {
       router.push(`/sessions/${activeSessionId}/present`)
+    }
+  }
+
+  async function handleStopSession() {
+    if (!activeSessionId) return
+    if (!confirm("Are you sure you want to end this session? This cannot be undone.")) return
+    setStopLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/v1/sessions/${activeSessionId}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data?.error?.message ?? "Failed to end session.")
+      } else {
+        router.refresh()
+      }
+    } catch {
+      setError("An unexpected error occurred. Please try again.")
+    } finally {
+      setStopLoading(false)
     }
   }
 
@@ -208,12 +231,21 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId }: Pub
           {/* Action buttons */}
           <div className="flex flex-wrap gap-3 pt-1">
             {activeSessionId ? (
-              <Button
-                onClick={handleResumeSession}
-                className="bg-primary text-primary-foreground"
-              >
-                Resume Session
-              </Button>
+              <>
+                <Button
+                  onClick={handleResumeSession}
+                  className="bg-primary text-primary-foreground"
+                >
+                  Resume Session
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleStopSession}
+                  disabled={stopLoading}
+                >
+                  {stopLoading ? "Ending…" : "End Session"}
+                </Button>
+              </>
             ) : (
               <Button
                 onClick={handleStartSession}
@@ -235,7 +267,7 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId }: Pub
 
           {activeSessionId && (
             <p className="text-xs text-muted-foreground">
-              End the active session before unpublishing.
+              End the active session to unpublish or delete this event.
             </p>
           )}
         </div>
