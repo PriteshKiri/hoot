@@ -1,24 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createServiceClient } from "@/lib/supabase/service"
+import { calculateScore } from "@/lib/scoring"
 
 type RouteContext = { params: Promise<{ sessionId: string }> }
-
-/**
- * Calculates the score for a correct answer based on remaining time.
- *
- * Formula: max(1, floor(1000 × (remainingTimeMs / timeLimitMs)))
- * Returns 0 for incorrect answers.
- *
- * Requirements: 10.2
- */
-export function calculateScore(
-  isCorrect: boolean,
-  remainingTimeMs: number,
-  timeLimitMs: number
-): number {
-  if (!isCorrect) return 0
-  return Math.max(1, Math.floor(1000 * (remainingTimeMs / timeLimitMs)))
-}
 
 /**
  * POST /api/v1/sessions/[sessionId]/answers
