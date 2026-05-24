@@ -1,0 +1,683 @@
+"use client"
+
+import { useEffect, useState, useCallback, useRef } from "react"
+import { useParams, useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
+import { QRCodeDisplay } from "@/components/QRCodeDisplay"
+import type { RealtimeChannel } from "@supabase/supabase-js"
+
+interface Participant {
+  participantId: string
+  displayName: string
+  avatar: string
+  joinedAt: string
+}
+
+interface SessionData {
+  id: string
+  status: string
+  event_id: string
+  current_question_id: string | null
+  current_question_index: number | null
+  question_started_at: string | null
+  events: {
+    id: string
+    title: string
+    join_code: string | null
+    questions: Array<{
+      id: string
+      position: number
+      question_type: string
+      text: string
+      image_url: string | null
+      time_limit: number
+      answer_options: Array<{
+        id: string
+        position: number
+        text: string | null
+        image_url: string | null
+        is_correct: boolean
+      }>
+    }>
+  } | null
+}
+
+interface ResultsRevealedPayload {
+  questionId: string
+  correctOptionIds: string[]
+  distribution: Array<{ optionId: string; count: number; percentage: number }>
+  totalResponses: number
+}
+
+interface LeaderboardEntry {
+  rank: number
+  participantId: string
+  displayName: string
+  avatar: string
+  totalScore: number
+  scoreDelta: number
+}
+
+interface LeaderboardUpdatedPayload {
+  isFinal: boolean
+  entries: LeaderboardEntry[]
+}
+
+interface AnswerCountPayload {
+  questionId: string
+  answeredCount: number
+  totalParticipants: number
+}
+
+/**
+ * Presenter screen — Client Component.
+ *
+ * Handles all session states:
+ *   lobby            → LobbyView (QR code, participant grid, Start button)
+ *   countdown        → CountdownView (3-2-1 animation)
+ *   question         → QuestionView (question text, options, timer, answer count)
+ *   results          → ResultsView (correct answers, response distribution bar chart)
+ *   leaderboard      → LeaderboardView (top 10 ranked, score deltas)
+ *   final_leaderboard → FinalLeaderboardView (podium top 3, full list, confetti)
+ *   ended            → (redirect or end message)
+ *
+ * Requirements: 6.1, 6.2, 6.4, 6.5, 6.6, 9.1, 9.2, 11.1–11.6, 12.1, 12.2, 12.4
+ */
+export default function PresentPage() {
+  const params = useParams<{ sessionId: string }>()
+  const sessionId = params.sessionId
+  const router = useRouter()
+
+  const [session, setSession] = useState<SessionData | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [participants, setParticipants] = useState<Map<string, Participant>>(new Map())
+  const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
+  const [sessionStatus, setSessionStatus] = useState<string>("lobby")
+  const [currentQuestion, setCurrentQuestion] = useState<SessionData["events"] extends null ? null : NonNullable<SessionData["events"]>["questions"][0] | null>(null)
+  const [questionStartedAt, setQuestionStartedAt] = useState<string | null>(null)
+  const [answeredCount, setAnsweredCount] = useState(0)
+  const [totalParticipants, setTotalParticipants] = useState(0)
+  const [resultsData, setResultsData] = useState<ResultsRevealedPayload | null>(null)
+  const [leaderboardData, setLeaderboardData] = useState<LeaderboardUpdatedPayload | null>(null)
+  const [advancing, setAdvancing] = useState(false)
+
+  // Load session data
+  useEffect(() => {
+    fetch(`/api/v1/sessions/${sessionId}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          setLoadError(data?.error?.message ?? "Failed to load session.")
+          return
+        }
+        const data = await res.json()
+        const s = data.session as SessionData
+        setSession(s)
+        setSessionStatus(s.status)
+        // Restore current question if session is already in question state
+        if (s.current_question_id && s.events?.questions) {
+          const q = s.events.questions.find((q) => q.id === s.current_question_id) ?? null
+          setCurrentQuestion(q)
+          setQuestionStartedAt(s.question_started_at)
+        }
+      })
+      .catch(() => setLoadError("Network error. Please refresh the page."))
+  }, [sessionId])
+
+  // Subscribe to Realtime Presence + Broadcast
+  useEffect(() => {
+    const supabase = createClient()
+    let channel: RealtimeChannel
+
+    channel = supabase.channel(`session:${sessionId}`, {
+      config: { presence: { key: "presenter" } },
+    })
+
+    channel
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState()
+        const newMap = new Map<string, Participant>()
+        for (const presences of Object.values(state)) {
+          for (const p of presences as unknown as Participant[]) {
+            if (p.participantId) newMap.set(p.participantId, p)
+          }
+        }
+        setParticipants(newMap)
+      })
+      .on("presence", { event: "join" }, ({ newPresences }) => {
+        setParticipants((prev) => {
+          const next = new Map(prev)
+          for (const p of newPresences as unknown as Participant[]) {
+            if (p.participantId) next.set(p.participantId, p)
+          }
+          return next
+        })
+      })
+      .on("presence", { event: "leave" }, ({ leftPresences }) => {
+        setParticipants((prev) => {
+          const next = new Map(prev)
+          for (const p of leftPresences as unknown as Participant[]) {
+            if (p.participantId) next.delete(p.participantId)
+          }
+          return next
+        })
+      })
+      .on("broadcast", { event: "session_state_changed" }, ({ payload }) => {
+        const status = payload?.status as string
+        setSessionStatus(status)
+        if (payload?.currentQuestion) {
+          // Map broadcast question shape to session question shape
+          const bq = payload.currentQuestion as {
+            id: string; text: string; questionType: string; imageUrl: string | null;
+            timeLimitSeconds: number; options: Array<{ id: string; text: string | null; imageUrl: string | null; position: number }>
+          }
+          setCurrentQuestion({
+            id: bq.id, text: bq.text, question_type: bq.questionType,
+            image_url: bq.imageUrl, time_limit: bq.timeLimitSeconds,
+            position: 0,
+            answer_options: bq.options.map((o) => ({ ...o, image_url: o.imageUrl, is_correct: false })),
+          })
+          setQuestionStartedAt(payload.questionStartedAt ?? null)
+          setAnsweredCount(0)
+        }
+      })
+      .on("broadcast", { event: "results_revealed" }, ({ payload }) => {
+        setResultsData(payload as ResultsRevealedPayload)
+      })
+      .on("broadcast", { event: "leaderboard_updated" }, ({ payload }) => {
+        setLeaderboardData(payload as LeaderboardUpdatedPayload)
+      })
+      .on("broadcast", { event: "answer_count_updated" }, ({ payload }) => {
+        const p = payload as AnswerCountPayload
+        setAnsweredCount(p.answeredCount)
+        setTotalParticipants(p.totalParticipants)
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [sessionId])
+
+  const handleAdvance = useCallback(async () => {
+    setStartError(null)
+    setAdvancing(true)
+    try {
+      const res = await fetch(`/api/v1/sessions/${sessionId}/advance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "advance" }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setStartError(data?.error?.message ?? "Failed to advance.")
+      }
+    } catch {
+      setStartError("Network error. Please try again.")
+    } finally {
+      setAdvancing(false)
+    }
+  }, [sessionId])
+
+  const handleStartQuiz = useCallback(async () => {
+    setStartError(null)
+    setAdvancing(true)
+    try {
+      const res = await fetch(`/api/v1/sessions/${sessionId}/advance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "start" }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setStartError(data?.error?.message ?? "Failed to start quiz.")
+      }
+    } catch {
+      setStartError("Network error. Please try again.")
+    } finally {
+      setAdvancing(false)
+    }
+  }, [sessionId])
+
+  const handleEndSession = useCallback(async () => {
+    if (!confirm("Are you sure you want to end this session?")) return
+    try {
+      await fetch(`/api/v1/sessions/${sessionId}`, { method: "DELETE" })
+      router.push("/dashboard")
+    } catch {
+      setStartError("Failed to end session.")
+    }
+  }, [sessionId, router])
+
+  const participantList = Array.from(participants.values())
+  const participantCount = participantList.length
+  const joinCode = session?.events?.join_code ?? null
+  const joinUrl = joinCode
+    ? `${typeof window !== "undefined" ? window.location.origin : "https://hoot.com"}/join/${joinCode}`
+    : ""
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="text-center space-y-4">
+          <div className="text-4xl" aria-hidden="true">⚠️</div>
+          <h1 className="text-xl font-bold">Failed to Load Session</h1>
+          <p className="text-muted-foreground text-sm">{loadError}</p>
+          <button onClick={() => router.push("/dashboard")}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition">
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!session) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-3">
+          <div className="text-4xl animate-pulse" aria-hidden="true">🦉</div>
+          <p className="text-muted-foreground">Loading session…</p>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Countdown ──────────────────────────────────────────────────────────────
+  if (sessionStatus === "countdown") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <CountdownView onComplete={handleAdvance} />
+      </div>
+    )
+  }
+
+  // ── Question ───────────────────────────────────────────────────────────────
+  if (sessionStatus === "question" && currentQuestion) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <PresenterQuestionView
+          question={currentQuestion}
+          questionStartedAt={questionStartedAt}
+          answeredCount={answeredCount}
+          totalParticipants={totalParticipants}
+        />
+        <SessionControls
+          onNext={handleAdvance}
+          advancing={advancing}
+          error={startError}
+          showNext
+        />
+      </div>
+    )
+  }
+
+  // ── Results ────────────────────────────────────────────────────────────────
+  if (sessionStatus === "results" && resultsData) {
+    const questions = session.events?.questions ?? []
+    const q = questions.find((q) => q.id === resultsData.questionId)
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <ResultsView resultsData={resultsData} question={q ?? null} />
+        <SessionControls onNext={handleAdvance} advancing={advancing} error={startError} showNext />
+      </div>
+    )
+  }
+
+  // ── Leaderboard ────────────────────────────────────────────────────────────
+  if (sessionStatus === "leaderboard" && leaderboardData) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <LeaderboardView entries={leaderboardData.entries.slice(0, 10)} isFinal={false} />
+        <SessionControls onNext={handleAdvance} advancing={advancing} error={startError} showNext />
+      </div>
+    )
+  }
+
+  // ── Final Leaderboard ──────────────────────────────────────────────────────
+  if (sessionStatus === "final_leaderboard" && leaderboardData) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <FinalLeaderboardView entries={leaderboardData.entries} />
+        <SessionControls
+          onNext={undefined}
+          onEnd={handleEndSession}
+          advancing={advancing}
+          error={startError}
+          showEnd
+        />
+      </div>
+    )
+  }
+
+  // ── Ended ──────────────────────────────────────────────────────────────────
+  if (sessionStatus === "ended") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="text-center space-y-4">
+          <div className="text-5xl" aria-hidden="true">🎉</div>
+          <h1 className="text-2xl font-bold">Session Ended</h1>
+          <p className="text-muted-foreground">Thanks for using Hoot!</p>
+          <button onClick={() => router.push("/dashboard")}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition">
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Lobby (default) ────────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">{session.events?.title ?? "Session"}</h1>
+            <p className="text-muted-foreground text-sm mt-1">Lobby — waiting for participants</p>
+          </div>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800" aria-live="polite">
+            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" aria-hidden="true" />
+            {participantCount} participant{participantCount !== 1 ? "s" : ""}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-1 space-y-6">
+            <div className="rounded-xl border bg-card p-6 text-center space-y-3">
+              <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Join Code</p>
+              <p className="text-5xl font-mono font-bold tracking-widest text-primary" aria-label={`Join code: ${joinCode}`}>{joinCode ?? "—"}</p>
+              <p className="text-xs text-muted-foreground">Go to <span className="font-semibold">{typeof window !== "undefined" ? window.location.host : "hoot.com"}/join</span></p>
+            </div>
+            {joinUrl && (
+              <div className="rounded-xl border bg-card p-6 flex flex-col items-center gap-3">
+                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Scan to Join</p>
+                <QRCodeDisplay url={joinUrl} size={180} alt={`QR code to join session with code ${joinCode}`} />
+                <a href={joinUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground transition truncate max-w-full">{joinUrl}</a>
+              </div>
+            )}
+            <div className="space-y-2">
+              {startError && <p role="alert" className="text-sm text-destructive text-center">{startError}</p>}
+              <button onClick={handleStartQuiz} disabled={participantCount === 0 || advancing} aria-disabled={participantCount === 0 || advancing}
+                className="w-full rounded-xl bg-primary px-6 py-4 text-base font-bold text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
+                {advancing ? "Starting…" : "Start Quiz"}
+              </button>
+              {participantCount === 0 && <p className="text-xs text-muted-foreground text-center" role="status">Waiting for at least 1 participant to join</p>}
+            </div>
+          </div>
+
+          <div className="lg:col-span-2">
+            <div className="rounded-xl border bg-card p-6 min-h-[300px]">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Participants ({participantCount})</h2>
+              {participantCount === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 text-center space-y-3">
+                  <div className="text-4xl" aria-hidden="true">👋</div>
+                  <p className="text-muted-foreground text-sm">No participants yet. Share the join code!</p>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2" role="list" aria-label="Joined participants" aria-live="polite" aria-atomic="false">
+                  {participantList.map((p) => (
+                    <div key={p.participantId} role="listitem" className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 text-sm font-medium">
+                      <span aria-hidden="true">{p.avatar}</span>
+                      <span>{p.displayName}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+function CountdownView({ onComplete }: { onComplete: () => void }) {
+  const [count, setCount] = useState(3)
+  useEffect(() => {
+    if (count <= 0) { onComplete(); return }
+    const t = setTimeout(() => setCount((c) => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [count, onComplete])
+  return (
+    <div className="text-center space-y-4" aria-live="assertive" aria-atomic="true">
+      <p className="text-muted-foreground text-lg font-medium">Get ready!</p>
+      <div className="text-9xl font-black text-primary animate-bounce" aria-label={`Countdown: ${count}`}>
+        {count > 0 ? count : "🎯"}
+      </div>
+    </div>
+  )
+}
+
+function PresenterQuestionView({
+  question, questionStartedAt, answeredCount, totalParticipants,
+}: {
+  question: NonNullable<SessionData["events"]>["questions"][0]
+  questionStartedAt: string | null
+  answeredCount: number
+  totalParticipants: number
+}) {
+  const [remaining, setRemaining] = useState(question.time_limit)
+
+  useEffect(() => {
+    if (!questionStartedAt) return
+    const update = () => {
+      const elapsed = (Date.now() - new Date(questionStartedAt).getTime()) / 1000
+      setRemaining(Math.max(0, question.time_limit - elapsed))
+    }
+    update()
+    const interval = setInterval(update, 200)
+    return () => clearInterval(interval)
+  }, [questionStartedAt, question.time_limit])
+
+  const pct = (remaining / question.time_limit) * 100
+  const sortedOptions = [...question.answer_options].sort((a, b) => a.position - b.position)
+
+  return (
+    <div className="flex-1 max-w-3xl mx-auto w-full px-6 py-8 space-y-6">
+      {question.image_url && (
+        <img src={question.image_url} alt="Question image" className="w-full rounded-xl object-cover max-h-48" />
+      )}
+      <div className="rounded-xl border bg-card px-6 py-5">
+        <p className="text-xl font-bold leading-snug">{question.text}</p>
+      </div>
+      {/* Timer bar */}
+      <div className="space-y-1">
+        <div className="flex justify-between text-sm text-muted-foreground">
+          <span>{Math.ceil(remaining)}s remaining</span>
+          <span aria-live="polite">{answeredCount} / {totalParticipants} answered</span>
+        </div>
+        <div className="h-3 rounded-full bg-muted overflow-hidden">
+          <div className="h-full rounded-full bg-primary transition-all duration-200" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+      {/* Options display-only */}
+      <div className="grid grid-cols-2 gap-3">
+        {sortedOptions.map((opt) => (
+          <div key={opt.id} className="rounded-xl border bg-card px-4 py-3 text-sm font-medium">
+            {opt.image_url && <img src={opt.image_url} alt="" className="w-full rounded-lg mb-2 object-cover max-h-24" aria-hidden="true" />}
+            {opt.text}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ResultsView({
+  resultsData, question,
+}: {
+  resultsData: ResultsRevealedPayload
+  question: NonNullable<SessionData["events"]>["questions"][0] | null
+}) {
+  const sortedOptions = question
+    ? [...question.answer_options].sort((a, b) => a.position - b.position)
+    : []
+
+  return (
+    <div className="flex-1 max-w-3xl mx-auto w-full px-6 py-8 space-y-6">
+      <h2 className="text-2xl font-bold">Results</h2>
+      {question && (
+        <div className="rounded-xl border bg-card px-6 py-4">
+          <p className="text-lg font-semibold">{question.text}</p>
+        </div>
+      )}
+      <div className="space-y-3">
+        {sortedOptions.map((opt) => {
+          const dist = resultsData.distribution.find((d) => d.optionId === opt.id)
+          const isCorrect = resultsData.correctOptionIds.includes(opt.id)
+          const pct = dist?.percentage ?? 0
+          const count = dist?.count ?? 0
+          return (
+            <div key={opt.id} className={`rounded-xl border px-4 py-3 space-y-2 ${isCorrect ? "border-green-500 bg-green-50" : "bg-card"}`}>
+              <div className="flex items-center justify-between text-sm font-medium">
+                <span className="flex items-center gap-2">
+                  {isCorrect && <span className="text-green-600" aria-label="Correct">✓</span>}
+                  {opt.text}
+                </span>
+                <span className="text-muted-foreground">{count} ({pct}%)</span>
+              </div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div className={`h-full rounded-full transition-all duration-500 ${isCorrect ? "bg-green-500" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <p className="text-sm text-muted-foreground text-center">{resultsData.totalResponses} total response{resultsData.totalResponses !== 1 ? "s" : ""}</p>
+    </div>
+  )
+}
+
+function LeaderboardView({ entries, isFinal }: { entries: LeaderboardEntry[]; isFinal: boolean }) {
+  return (
+    <div className="flex-1 max-w-2xl mx-auto w-full px-6 py-8 space-y-6">
+      <h2 className="text-2xl font-bold">{isFinal ? "Final Leaderboard" : "Leaderboard"}</h2>
+      <div className="space-y-2">
+        {entries.map((entry, i) => (
+          <div key={entry.participantId}
+            className="flex items-center gap-4 rounded-xl border bg-card px-4 py-3 transition-all duration-500"
+            style={{ animationDelay: `${i * 50}ms` }}>
+            <span className="text-2xl font-black text-muted-foreground w-8 text-center">
+              {entry.rank === 1 ? "🥇" : entry.rank === 2 ? "🥈" : entry.rank === 3 ? "🥉" : `#${entry.rank}`}
+            </span>
+            <span className="text-2xl" aria-hidden="true">{entry.avatar}</span>
+            <span className="flex-1 font-semibold truncate">{entry.displayName}</span>
+            <div className="text-right">
+              <p className="font-bold">{entry.totalScore.toLocaleString()}</p>
+              {entry.scoreDelta > 0 && (
+                <p className="text-xs text-green-600 font-medium">+{entry.scoreDelta}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function FinalLeaderboardView({ entries }: { entries: LeaderboardEntry[] }) {
+  const confettiFiredRef = useRef(false)
+
+  useEffect(() => {
+    if (confettiFiredRef.current) return
+    confettiFiredRef.current = true
+    // Dynamically import canvas-confetti to avoid SSR issues
+    import("canvas-confetti").then((mod) => {
+      const confetti = mod.default
+      const end = Date.now() + 5000 // 5 seconds max
+      const frame = () => {
+        confetti({ particleCount: 3, angle: 60, spread: 55, origin: { x: 0 } })
+        confetti({ particleCount: 3, angle: 120, spread: 55, origin: { x: 1 } })
+        if (Date.now() < end) requestAnimationFrame(frame)
+      }
+      frame()
+    })
+  }, [])
+
+  const top3 = entries.slice(0, 3)
+  const rest = entries.slice(3)
+
+  return (
+    <div className="flex-1 max-w-2xl mx-auto w-full px-6 py-8 space-y-8">
+      <h2 className="text-3xl font-black text-center">🏆 Final Results</h2>
+
+      {/* Podium for top 3 */}
+      <div className="flex items-end justify-center gap-4">
+        {/* 2nd place */}
+        {top3[1] && (
+          <div className="flex flex-col items-center gap-2 flex-1">
+            <span className="text-3xl">{top3[1].avatar}</span>
+            <p className="font-bold text-sm text-center truncate w-full">{top3[1].displayName}</p>
+            <p className="text-sm text-muted-foreground">{top3[1].totalScore.toLocaleString()}</p>
+            <div className="w-full h-20 rounded-t-xl bg-slate-300 flex items-center justify-center text-3xl font-black">🥈</div>
+          </div>
+        )}
+        {/* 1st place */}
+        {top3[0] && (
+          <div className="flex flex-col items-center gap-2 flex-1">
+            <span className="text-4xl">{top3[0].avatar}</span>
+            <p className="font-bold text-sm text-center truncate w-full">{top3[0].displayName}</p>
+            <p className="text-sm text-muted-foreground">{top3[0].totalScore.toLocaleString()}</p>
+            <div className="w-full h-28 rounded-t-xl bg-yellow-300 flex items-center justify-center text-3xl font-black">🥇</div>
+          </div>
+        )}
+        {/* 3rd place */}
+        {top3[2] && (
+          <div className="flex flex-col items-center gap-2 flex-1">
+            <span className="text-3xl">{top3[2].avatar}</span>
+            <p className="font-bold text-sm text-center truncate w-full">{top3[2].displayName}</p>
+            <p className="text-sm text-muted-foreground">{top3[2].totalScore.toLocaleString()}</p>
+            <div className="w-full h-14 rounded-t-xl bg-amber-600 flex items-center justify-center text-3xl font-black">🥉</div>
+          </div>
+        )}
+      </div>
+
+      {/* Full ranked list */}
+      {rest.length > 0 && (
+        <div className="space-y-2">
+          {rest.map((entry) => (
+            <div key={entry.participantId} className="flex items-center gap-4 rounded-xl border bg-card px-4 py-3">
+              <span className="text-sm font-bold text-muted-foreground w-8 text-center">#{entry.rank}</span>
+              <span className="text-xl" aria-hidden="true">{entry.avatar}</span>
+              <span className="flex-1 font-medium truncate">{entry.displayName}</span>
+              <span className="font-bold">{entry.totalScore.toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SessionControls({
+  onNext, onEnd, advancing, error, showNext, showEnd,
+}: {
+  onNext?: () => void
+  onEnd?: () => void
+  advancing: boolean
+  error: string | null
+  showNext?: boolean
+  showEnd?: boolean
+}) {
+  return (
+    <div className="sticky bottom-0 border-t bg-background/95 backdrop-blur px-6 py-4">
+      {error && <p role="alert" className="text-sm text-destructive text-center mb-2">{error}</p>}
+      <div className="flex justify-end gap-3 max-w-3xl mx-auto">
+        {showNext && onNext && (
+          <button onClick={onNext} disabled={advancing}
+            className="rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition">
+            {advancing ? "Loading…" : "Next →"}
+          </button>
+        )}
+        {showEnd && onEnd && (
+          <button onClick={onEnd}
+            className="rounded-xl bg-destructive px-6 py-3 text-sm font-bold text-destructive-foreground hover:bg-destructive/90 transition">
+            End Session
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}

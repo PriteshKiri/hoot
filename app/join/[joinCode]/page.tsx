@@ -1,0 +1,268 @@
+"use client"
+
+import { useState, FormEvent, useEffect } from "react"
+import { useRouter, useParams } from "next/navigation"
+
+const AVATAR_OPTIONS = [
+  "🦁", "🐯", "🐻", "🦊", "🐺", "🦝", "🐸", "🐧",
+  "🦜", "🦋", "🐝", "🦄", "🐙", "🦈", "🐬", "🦭",
+  "🐘", "🦒", "🦓", "🦏", "🐊", "🦩", "🦚", "🐦",
+]
+
+/**
+ * Name + avatar selection page.
+ *
+ * 1. Resolves the joinCode to a sessionId via GET /api/v1/sessions/by-join-code
+ * 2. Collects displayName (1–30 chars) and avatar (emoji)
+ * 3. POSTs to /api/v1/sessions/[sessionId]/join
+ * 4. Stores participantToken in sessionStorage as 'hoot_participant_token'
+ * 5. Stores sessionId in sessionStorage as 'hoot_session_id'
+ * 6. Redirects to /play/[sessionId]
+ *
+ * Requirements: 5.1–5.8
+ */
+export default function JoinNamePage() {
+  const router = useRouter()
+  const params = useParams<{ joinCode: string }>()
+  const joinCode = params.joinCode?.toUpperCase() ?? ""
+
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [eventTitle, setEventTitle] = useState<string>("")
+  const [lookupError, setLookupError] = useState<string | null>(null)
+  const [lookupLoading, setLookupLoading] = useState(true)
+
+  const [displayName, setDisplayName] = useState("")
+  const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  // Resolve joinCode → sessionId on mount
+  useEffect(() => {
+    if (!joinCode) {
+      setLookupError("Invalid join code.")
+      setLookupLoading(false)
+      return
+    }
+
+    fetch(`/api/v1/sessions/by-join-code?code=${encodeURIComponent(joinCode)}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          if (res.status === 404) {
+            setLookupError(
+              "No active session found for this code. The session may have already started or ended."
+            )
+          } else {
+            setLookupError(data?.error?.message ?? "Failed to look up session.")
+          }
+          return
+        }
+        const data = await res.json()
+        setSessionId(data.sessionId)
+        setEventTitle(data.eventTitle ?? "")
+      })
+      .catch(() => {
+        setLookupError("Network error. Please check your connection and try again.")
+      })
+      .finally(() => {
+        setLookupLoading(false)
+      })
+  }, [joinCode])
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSubmitError(null)
+
+    if (!sessionId) return
+
+    const trimmedName = displayName.trim()
+    if (trimmedName.length < 1 || trimmedName.length > 30) {
+      setSubmitError("Display name must be between 1 and 30 characters.")
+      return
+    }
+
+    if (!selectedAvatar) {
+      setSubmitError("Please select an avatar.")
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/v1/sessions/${sessionId}/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          joinCode,
+          displayName: trimmedName,
+          avatar: selectedAvatar,
+        }),
+      })
+
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        const code = data?.error?.code
+        if (code === "DISPLAY_NAME_TAKEN") {
+          setSubmitError("This name is already taken. Please choose a different name.")
+        } else if (code === "SESSION_ALREADY_STARTED") {
+          setSubmitError("This session has already started. You can no longer join.")
+        } else if (code === "SESSION_AT_CAPACITY") {
+          setSubmitError("This session is full (150 participants maximum).")
+        } else if (code === "JOIN_CODE_NOT_FOUND") {
+          setSubmitError("Invalid join code. Please go back and try again.")
+        } else {
+          setSubmitError(data?.error?.message ?? "Failed to join. Please try again.")
+        }
+        return
+      }
+
+      // Store token and session ID in sessionStorage
+      sessionStorage.setItem("hoot_participant_token", data.participantToken)
+      sessionStorage.setItem("hoot_session_id", sessionId)
+
+      // Redirect to participant screen
+      router.push(`/play/${sessionId}`)
+    } catch {
+      setSubmitError("Network error. Please check your connection and try again.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Loading state while resolving join code
+  if (lookupLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-3">
+          <div className="text-4xl animate-pulse" aria-hidden="true">🦉</div>
+          <p className="text-muted-foreground">Looking up session…</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state if session not found
+  if (lookupError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="w-full max-w-sm text-center space-y-6">
+          <div className="text-5xl" aria-hidden="true">😕</div>
+          <div>
+            <h1 className="text-xl font-bold">Session Not Found</h1>
+            <p className="mt-2 text-muted-foreground text-sm">{lookupError}</p>
+          </div>
+          <a
+            href="/join"
+            className="inline-block rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition"
+          >
+            Try a different code
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
+      <div className="w-full max-w-md space-y-8">
+        {/* Header */}
+        <div className="text-center">
+          <div className="text-4xl mb-2" aria-hidden="true">🦉</div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {eventTitle || "Join Session"}
+          </h1>
+          <p className="mt-1 text-muted-foreground text-sm">
+            Code: <span className="font-mono font-bold">{joinCode}</span>
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+          {/* Display name */}
+          <div className="space-y-2">
+            <label
+              htmlFor="display-name"
+              className="block text-sm font-medium text-foreground"
+            >
+              Your Name
+            </label>
+            <input
+              id="display-name"
+              type="text"
+              autoComplete="nickname"
+              maxLength={30}
+              value={displayName}
+              onChange={(e) => {
+                setSubmitError(null)
+                setDisplayName(e.target.value)
+              }}
+              placeholder="Enter your name"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+              aria-describedby={submitError ? "submit-error" : undefined}
+              disabled={submitting}
+            />
+            <p className="text-xs text-muted-foreground">
+              1–30 characters. Letters, digits, spaces, hyphens, and underscores only.
+            </p>
+          </div>
+
+          {/* Avatar selector */}
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-foreground">Choose Your Avatar</p>
+            <div
+              className="grid grid-cols-6 gap-2 sm:grid-cols-8"
+              role="radiogroup"
+              aria-label="Avatar selection"
+            >
+              {AVATAR_OPTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedAvatar === emoji}
+                  onClick={() => {
+                    setSubmitError(null)
+                    setSelectedAvatar(emoji)
+                  }}
+                  className={`
+                    flex items-center justify-center rounded-lg text-2xl
+                    min-h-[44px] min-w-[44px] transition
+                    focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1
+                    ${
+                      selectedAvatar === emoji
+                        ? "bg-primary/20 ring-2 ring-primary scale-110"
+                        : "bg-muted hover:bg-muted/80"
+                    }
+                  `}
+                  disabled={submitting}
+                  aria-label={`Avatar: ${emoji}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Error */}
+          {submitError && (
+            <p
+              id="submit-error"
+              role="alert"
+              className="text-sm text-destructive"
+            >
+              {submitError}
+            </p>
+          )}
+
+          {/* Submit */}
+          <button
+            type="submit"
+            disabled={submitting || !displayName.trim() || !selectedAvatar}
+            className="w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          >
+            {submitting ? "Joining…" : "Join Session"}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
