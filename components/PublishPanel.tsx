@@ -21,13 +21,15 @@ interface PublishPanelProps {
  *
  * Requirements: 4.3, 4.4
  */
-export function PublishPanel({ eventId, status, joinCode, activeSessionId }: PublishPanelProps) {
+export function PublishPanel({ eventId, status, joinCode, activeSessionId: initialActiveSessionId }: PublishPanelProps) {
   const router = useRouter()
   const [publishLoading, setPublishLoading] = useState(false)
   const [unpublishLoading, setUnpublishLoading] = useState(false)
   const [sessionLoading, setSessionLoading] = useState(false)
   const [stopLoading, setStopLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Track activeSessionId in local state so ending a session updates the UI immediately
+  const [activeSessionId, setActiveSessionId] = useState<string | null | undefined>(initialActiveSessionId)
 
   const joinUrl = joinCode
     ? `${typeof window !== "undefined" ? window.location.origin : process.env.NEXT_PUBLIC_APP_URL ?? "https://hoot-puce.vercel.app"}/join/${joinCode}`
@@ -90,6 +92,7 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId }: Pub
       if (!res.ok) {
         setError(data?.error?.message ?? "Failed to start session.")
       } else {
+        setActiveSessionId(data.session.id)
         router.push(`/sessions/${data.session.id}/present`)
       }
     } catch {
@@ -118,6 +121,8 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId }: Pub
         const data = await res.json().catch(() => ({}))
         setError(data?.error?.message ?? "Failed to end session.")
       } else {
+        // Clear local state immediately so the UI updates without waiting for a server round-trip
+        setActiveSessionId(null)
         router.refresh()
       }
     } catch {
