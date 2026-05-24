@@ -182,6 +182,12 @@ export default function PresentPage() {
           setQuestionStartedAt(payload.questionStartedAt ?? null)
           setAnsweredCount(0)
           setWordCloudData([])
+          // Sync totalParticipants from current presence count so the
+          // "X / Y answered" display is correct from the first answer
+          setParticipants((prev) => {
+            setTotalParticipants(prev.size)
+            return prev
+          })
         }
       })
       .on("broadcast", { event: "results_revealed" }, ({ payload }) => {
@@ -228,6 +234,11 @@ export default function PresentPage() {
               setCurrentQuestion(q)
               setQuestionStartedAt(updatedSession.question_started_at ?? null)
               setAnsweredCount(0)
+              // Sync totalParticipants from presence so the counter is correct
+              setParticipants((prev) => {
+                setTotalParticipants(prev.size)
+                return prev
+              })
             }
           }
         }
@@ -361,7 +372,18 @@ export default function PresentPage() {
   }
 
   // ── Leaderboard ────────────────────────────────────────────────────────────
-  if (sessionStatus === "leaderboard" && leaderboardData) {
+  if (sessionStatus === "leaderboard") {
+    if (!leaderboardData) {
+      // Status arrived (via local fallback) but broadcast hasn't yet — show a brief loader
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="text-center space-y-3">
+            <div className="text-4xl animate-pulse" aria-hidden="true">🏆</div>
+            <p className="text-muted-foreground">Loading leaderboard…</p>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <LeaderboardView entries={leaderboardData.entries.slice(0, 10)} isFinal={false} />
@@ -371,7 +393,17 @@ export default function PresentPage() {
   }
 
   // ── Final Leaderboard ──────────────────────────────────────────────────────
-  if (sessionStatus === "final_leaderboard" && leaderboardData) {
+  if (sessionStatus === "final_leaderboard") {
+    if (!leaderboardData) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="text-center space-y-3">
+            <div className="text-4xl animate-pulse" aria-hidden="true">🏆</div>
+            <p className="text-muted-foreground">Loading final results…</p>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <FinalLeaderboardView entries={leaderboardData.entries} />
@@ -394,10 +426,18 @@ export default function PresentPage() {
           <div className="text-5xl" aria-hidden="true">🎉</div>
           <h1 className="text-2xl font-bold">Session Ended</h1>
           <p className="text-muted-foreground">Thanks for using Hoot!</p>
-          <button onClick={() => router.push("/dashboard")}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition">
-            Back to Dashboard
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <a
+              href={`/events/${session.event_id}/analytics/${sessionId}`}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition"
+            >
+              View Analytics
+            </a>
+            <button onClick={() => router.push("/dashboard")}
+              className="rounded-md border px-4 py-2 text-sm font-semibold hover:bg-muted transition">
+              Back to Dashboard
+            </button>
+          </div>
         </div>
       </div>
     )

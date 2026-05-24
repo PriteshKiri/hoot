@@ -358,11 +358,33 @@ export default function PlayPage() {
     )
   }
 
-  if (sessionStatus === "leaderboard" && leaderboardData) {
+  if (sessionStatus === "leaderboard") {
+    if (!leaderboardData) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          {reconnectionBanner}
+          <div className="text-center space-y-3">
+            <div className="text-4xl animate-pulse" aria-hidden="true">🏆</div>
+            <p className="text-muted-foreground">Loading leaderboard…</p>
+          </div>
+        </div>
+      )
+    }
     return <ParticipantLeaderboardView entries={leaderboardData.entries} participantId={participantId} isFinal={false} />
   }
 
-  if (sessionStatus === "final_leaderboard" && leaderboardData) {
+  if (sessionStatus === "final_leaderboard") {
+    if (!leaderboardData) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          {reconnectionBanner}
+          <div className="text-center space-y-3">
+            <div className="text-4xl animate-pulse" aria-hidden="true">🏆</div>
+            <p className="text-muted-foreground">Loading final results…</p>
+          </div>
+        </div>
+      )
+    }
     return <ParticipantLeaderboardView entries={leaderboardData.entries} participantId={participantId} isFinal={true} />
   }
 

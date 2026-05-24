@@ -61,6 +61,15 @@ export default async function EventEditorPage({ params }: PageProps) {
 
   const activeSessionId = activeSession?.id ?? null
 
+  // Fetch ended sessions for analytics links
+  const { data: endedSessions } = await supabase
+    .from("sessions")
+    .select("id, created_at, ended_at")
+    .eq("event_id", eventId)
+    .eq("status", "ended")
+    .order("ended_at", { ascending: false })
+    .limit(5)
+
   return (
     <div className="p-8 max-w-3xl space-y-8">
       {/* Breadcrumb */}
@@ -84,6 +93,14 @@ export default async function EventEditorPage({ params }: PageProps) {
             <p className="text-muted-foreground text-sm line-clamp-2">{event.description}</p>
           )}
         </div>
+        {/* Theme / branding settings */}
+        <Link
+          href={`/events/${eventId}/edit`}
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+          Theme &amp; Branding
+        </Link>
       </div>
 
       {/* Publish panel */}
@@ -131,6 +148,42 @@ export default async function EventEditorPage({ params }: PageProps) {
 
         <QuestionList questions={questionList} eventId={eventId} />
       </div>
+
+      {/* Past sessions / analytics */}
+      {endedSessions && endedSessions.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">Past Sessions</h2>
+          <div className="rounded-lg border divide-y">
+            {endedSessions.map((session, i) => {
+              const endedAt = session.ended_at
+                ? new Date(session.ended_at).toLocaleString(undefined, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })
+                : "Unknown"
+              return (
+                <div key={session.id} className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium">Session {endedSessions.length - i}</p>
+                    <p className="text-xs text-muted-foreground">Ended {endedAt}</p>
+                  </div>
+                  <Link
+                    href={`/events/${eventId}/analytics/${session.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <line x1="18" y1="20" x2="18" y2="10"/>
+                      <line x1="12" y1="20" x2="12" y2="4"/>
+                      <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                    View Analytics
+                  </Link>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
