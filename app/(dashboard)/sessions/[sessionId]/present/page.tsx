@@ -210,13 +210,28 @@ export default function PresentPage() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setStartError(data?.error?.message ?? "Failed to advance.")
+      } else {
+        // Apply state locally in case the Realtime broadcast is delayed or missed
+        const data = await res.json().catch(() => ({}))
+        const updatedSession = data?.session
+        if (updatedSession?.status) {
+          setSessionStatus(updatedSession.status)
+          if (updatedSession.current_question_id && session?.events?.questions) {
+            const q = session.events.questions.find((q) => q.id === updatedSession.current_question_id) ?? null
+            if (q) {
+              setCurrentQuestion(q)
+              setQuestionStartedAt(updatedSession.question_started_at ?? null)
+              setAnsweredCount(0)
+            }
+          }
+        }
       }
     } catch {
       setStartError("Network error. Please try again.")
     } finally {
       setAdvancing(false)
     }
-  }, [sessionId])
+  }, [sessionId, session])
 
   const handleStartQuiz = useCallback(async () => {
     setStartError(null)
@@ -230,6 +245,13 @@ export default function PresentPage() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setStartError(data?.error?.message ?? "Failed to start quiz.")
+      } else {
+        // Apply state locally in case the Realtime broadcast is delayed or missed
+        const data = await res.json().catch(() => ({}))
+        const updatedSession = data?.session
+        if (updatedSession?.status) {
+          setSessionStatus(updatedSession.status)
+        }
       }
     } catch {
       setStartError("Network error. Please try again.")
