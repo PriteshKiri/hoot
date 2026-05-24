@@ -121,7 +121,7 @@ CREATE TABLE session_participants (
   session_id        uuid NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   display_name      text NOT NULL CHECK (
                       char_length(display_name) BETWEEN 1 AND 30
-                      AND display_name ~ '^[\p{L}\p{N} \-_]+$'
+                      AND display_name ~ '^[[:alpha:][:digit:] \-_]+$'
                     ),
   avatar            text NOT NULL,   -- emoji character
   total_score       integer NOT NULL DEFAULT 0,
