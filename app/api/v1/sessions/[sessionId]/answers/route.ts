@@ -262,11 +262,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     )
   }
 
-  // Step 9: Update session_participants.total_score
-  await supabase
-    .from("session_participants")
-    .update({ total_score: participant.total_score + scoreAwarded })
-    .eq("id", participant.id)
+  // Step 9: Update session_participants.total_score atomically using SQL increment
+  // to avoid a read-modify-write race when multiple participants answer simultaneously
+  await supabase.rpc("increment_participant_score", {
+    p_participant_id: participant.id,
+    p_score: scoreAwarded,
+  })
 
   // Step 10: Broadcast answer_count_updated
   const { count: answeredCount } = await supabase

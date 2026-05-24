@@ -137,6 +137,8 @@ export default function PlayPage() {
           setQuestionStartedAt(payload.questionStartedAt)
           setSelectedOptionIds([])
           setSubmittedForQuestion(null)
+          setResultsData(null)
+          setLeaderboardData(null)
         }
       })
       .on("broadcast", { event: "results_revealed" }, ({ payload }) => {

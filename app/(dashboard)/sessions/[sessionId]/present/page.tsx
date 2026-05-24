@@ -182,6 +182,8 @@ export default function PresentPage() {
           setQuestionStartedAt(payload.questionStartedAt ?? null)
           setAnsweredCount(0)
           setWordCloudData([])
+          setResultsData(null)
+          setLeaderboardData(null)
           // Sync totalParticipants from current presence count so the
           // "X / Y answered" display is correct from the first answer
           setParticipants((prev) => {
@@ -234,6 +236,8 @@ export default function PresentPage() {
               setCurrentQuestion(q)
               setQuestionStartedAt(updatedSession.question_started_at ?? null)
               setAnsweredCount(0)
+              setResultsData(null)
+              setLeaderboardData(null)
               // Sync totalParticipants from presence so the counter is correct
               setParticipants((prev) => {
                 setTotalParticipants(prev.size)
@@ -360,7 +364,20 @@ export default function PresentPage() {
   }
 
   // ── Results ────────────────────────────────────────────────────────────────
-  if (sessionStatus === "results" && resultsData) {
+  if (sessionStatus === "results") {
+    if (!resultsData) {
+      return (
+        <div className="min-h-screen flex flex-col bg-background">
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-3">
+              <div className="text-4xl animate-pulse" aria-hidden="true">📊</div>
+              <p className="text-muted-foreground">Loading results…</p>
+            </div>
+          </div>
+          <SessionControls onNext={handleAdvance} advancing={advancing} error={startError} showNext />
+        </div>
+      )
+    }
     const questions = session.events?.questions ?? []
     const q = questions.find((q) => q.id === resultsData.questionId)
     return (
