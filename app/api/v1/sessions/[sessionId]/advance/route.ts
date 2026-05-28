@@ -2,40 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import { generateAnalyticsSnapshots } from "@/lib/analytics"
+import { broadcastSessionEvent } from "@/lib/supabase/realtime"
 
 type RouteContext = { params: Promise<{ sessionId: string }> }
-
-/**
- * Broadcasts a Realtime event via the Supabase REST broadcast API.
- * Server-side JS channel.send() requires an active WebSocket subscription,
- * so we use the HTTP endpoint with the service role key instead.
- */
-async function broadcastEvent(
-  sessionId: string,
-  event: string,
-  payload: Record<string, unknown>
-) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!.replace(/\/$/, "")
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-  await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${serviceRoleKey}`,
-      "apikey": serviceRoleKey,
-    },
-    body: JSON.stringify({
-      messages: [
-        {
-          topic: `realtime:session:${sessionId}`,
-          event,
-          payload,
-        },
-      ],
-    }),
-  })
-}
 
 type SessionStatus =
   | "lobby"
@@ -345,7 +314,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     questionStartedAt: updatedSession.question_started_at ?? null,
   }
 
-  await broadcastEvent(sessionId, "session_state_changed", broadcastPayload as unknown as Record<string, unknown>)
+  await broadcastSessionEvent(sessionId, "session_state_changed", broadcastPayload as unknown as Record<string, unknown>)
 
   // ─── Task 12.1: Results reveal ───────────────────────────────────────────
   // When transitioning to 'results', compute and broadcast response distribution
@@ -427,7 +396,7 @@ async function broadcastResultsRevealed(
     return { optionId: option.id, count, percentage }
   })
 
-  await broadcastEvent(sessionId, "results_revealed", {
+  await broadcastSessionEvent(sessionId, "results_revealed", {
     questionId,
     correctOptionIds,
     distribution,
@@ -523,7 +492,7 @@ async function broadcastLeaderboard(
   await Promise.all(rankUpdates)
 
   // Broadcast leaderboard_updated
-  await broadcastEvent(sessionId, "leaderboard_updated", {
+  await broadcastSessionEvent(sessionId, "leaderboard_updated", {
     isFinal,
     entries,
   })

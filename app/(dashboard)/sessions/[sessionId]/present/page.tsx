@@ -103,6 +103,10 @@ export default function PresentPage() {
   const [wordCloudData, setWordCloudData] = useState<Array<{ word: string; count: number }>>([])
   const [advancing, setAdvancing] = useState(false)
 
+  // Guards so auto-advance fires at most once per state transition
+  const autoAdvancedQuestionIdRef = useRef<string | null>(null)
+  const autoAdvancedResultsIdRef = useRef<string | null>(null)
+
   // Load session data
   useEffect(() => {
     fetch(`/api/v1/sessions/${sessionId}`)
@@ -230,7 +234,15 @@ export default function PresentPage() {
         const updatedSession = data?.session
         if (updatedSession?.status) {
           setSessionStatus(updatedSession.status)
-          if (updatedSession.current_question_id && session?.events?.questions) {
+          // Only reset per-question state when entering a NEW question.
+          // current_question_id remains set during results / leaderboard
+          // (it points at the question we're showing results for), so we
+          // must gate on the status itself.
+          if (
+            updatedSession.status === "question" &&
+            updatedSession.current_question_id &&
+            session?.events?.questions
+          ) {
             const q = session.events.questions.find((q) => q.id === updatedSession.current_question_id) ?? null
             if (q) {
               setCurrentQuestion(q)
@@ -238,7 +250,6 @@ export default function PresentPage() {
               setAnsweredCount(0)
               setResultsData(null)
               setLeaderboardData(null)
-              // Sync totalParticipants from presence so the counter is correct
               setParticipants((prev) => {
                 setTotalParticipants(prev.size)
                 return prev
@@ -253,6 +264,90 @@ export default function PresentPage() {
       setAdvancing(false)
     }
   }, [sessionId, session])
+
+  // Polling fallback for the live answer count. Realtime broadcasts are the
+  // primary channel, but if a message is dropped we still want the
+  // "X / Y answered" counter to reflect reality. Polls every 2s while in
+  // the question state.
+  useEffect(() => {
+    if (sessionStatus !== "question") return
+    if (!currentQuestion) return
+
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/v1/sessions/${sessionId}/live`, {
+          cache: "no-store",
+        })
+        if (!res.ok || cancelled) return
+        const data = await res.json()
+        if (data.currentQuestionId !== currentQuestion.id) return
+        setAnsweredCount((prev) =>
+          typeof data.answeredCount === "number" && data.answeredCount > prev
+            ? data.answeredCount
+            : prev
+        )
+        setTotalParticipants((prev) =>
+          typeof data.totalParticipants === "number" && data.totalParticipants > prev
+            ? data.totalParticipants
+            : prev
+        )
+      } catch {
+        // Best-effort — Realtime is primary
+      }
+    }
+
+    poll()
+    const interval = setInterval(poll, 2000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [sessionId, sessionStatus, currentQuestion])
+
+  // Auto-advance question → results when the timer reaches zero.
+  // Guard ensures we only fire once per question, even if the broadcast and
+  // local fallback both update state.
+  useEffect(() => {
+    if (sessionStatus !== "question") return
+    if (!currentQuestion || !questionStartedAt) return
+    if (autoAdvancedQuestionIdRef.current === currentQuestion.id) return
+
+    const startMs = new Date(questionStartedAt).getTime()
+    const expiresAt = startMs + currentQuestion.time_limit * 1000
+    const remainingMs = expiresAt - Date.now()
+
+    const fire = () => {
+      if (autoAdvancedQuestionIdRef.current === currentQuestion.id) return
+      autoAdvancedQuestionIdRef.current = currentQuestion.id
+      handleAdvance()
+    }
+
+    if (remainingMs <= 0) {
+      fire()
+      return
+    }
+
+    const t = setTimeout(fire, remainingMs)
+    return () => clearTimeout(t)
+  }, [sessionStatus, currentQuestion, questionStartedAt, handleAdvance])
+
+  // Auto-advance results → leaderboard after a brief dwell so participants
+  // and the presenter can read the correct answer and per-option breakdown.
+  useEffect(() => {
+    if (sessionStatus !== "results") return
+    if (!resultsData) return
+    if (autoAdvancedResultsIdRef.current === resultsData.questionId) return
+
+    const RESULTS_DWELL_MS = 6000
+    const t = setTimeout(() => {
+      if (autoAdvancedResultsIdRef.current === resultsData.questionId) return
+      autoAdvancedResultsIdRef.current = resultsData.questionId
+      handleAdvance()
+    }, RESULTS_DWELL_MS)
+
+    return () => clearTimeout(t)
+  }, [sessionStatus, resultsData, handleAdvance])
 
   const handleStartQuiz = useCallback(async () => {
     setStartError(null)
@@ -334,6 +429,11 @@ export default function PresentPage() {
     )
   }
 
+  // Determine total number of questions and where we are, for "Next" labels
+  const totalQuestionsCount = session?.events?.questions?.length ?? 0
+  const currentIdx = session?.current_question_index ?? -1
+  const isLastQuestion = currentIdx >= 0 && currentIdx >= totalQuestionsCount - 1
+
   // ── Question ───────────────────────────────────────────────────────────────
   if (sessionStatus === "question" && currentQuestion) {
     const isOpenText = currentQuestion.question_type === "open_text"
@@ -344,6 +444,8 @@ export default function PresentPage() {
           questionStartedAt={questionStartedAt}
           answeredCount={answeredCount}
           totalParticipants={totalParticipants}
+          questionNumber={currentIdx + 1}
+          totalQuestions={totalQuestionsCount}
         />
         {isOpenText && (
           <div className="max-w-3xl mx-auto w-full px-6 pb-4">
@@ -358,6 +460,7 @@ export default function PresentPage() {
           advancing={advancing}
           error={startError}
           showNext
+          nextLabel="Reveal Results →"
         />
       </div>
     )
@@ -374,7 +477,7 @@ export default function PresentPage() {
               <p className="text-muted-foreground">Loading results…</p>
             </div>
           </div>
-          <SessionControls onNext={handleAdvance} advancing={advancing} error={startError} showNext />
+          <SessionControls onNext={handleAdvance} advancing={advancing} error={startError} showNext nextLabel="Show Leaderboard →" />
         </div>
       )
     }
@@ -383,7 +486,7 @@ export default function PresentPage() {
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <ResultsView resultsData={resultsData} question={q ?? null} />
-        <SessionControls onNext={handleAdvance} advancing={advancing} error={startError} showNext />
+        <SessionControls onNext={handleAdvance} advancing={advancing} error={startError} showNext nextLabel="Show Leaderboard →" />
       </div>
     )
   }
@@ -401,10 +504,11 @@ export default function PresentPage() {
         </div>
       )
     }
+    const nextLabel = isLastQuestion ? "Show Final Results →" : "Next Question →"
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <LeaderboardView entries={leaderboardData.entries.slice(0, 10)} isFinal={false} />
-        <SessionControls onNext={handleAdvance} advancing={advancing} error={startError} showNext />
+        <SessionControls onNext={handleAdvance} advancing={advancing} error={startError} showNext nextLabel={nextLabel} />
       </div>
     )
   }
@@ -545,12 +649,14 @@ function CountdownView({ onComplete }: { onComplete: () => void }) {
 }
 
 function PresenterQuestionView({
-  question, questionStartedAt, answeredCount, totalParticipants,
+  question, questionStartedAt, answeredCount, totalParticipants, questionNumber, totalQuestions,
 }: {
   question: NonNullable<SessionData["events"]>["questions"][0]
   questionStartedAt: string | null
   answeredCount: number
   totalParticipants: number
+  questionNumber: number
+  totalQuestions: number
 }) {
   const [remaining, setRemaining] = useState(question.time_limit)
 
@@ -567,9 +673,16 @@ function PresenterQuestionView({
 
   const pct = (remaining / question.time_limit) * 100
   const sortedOptions = [...question.answer_options].sort((a, b) => a.position - b.position)
+  const safeTotal = Math.max(totalParticipants, answeredCount)
+  const answeredPct = safeTotal > 0 ? Math.round((answeredCount / safeTotal) * 100) : 0
 
   return (
     <div className="flex-1 max-w-3xl mx-auto w-full px-6 py-8 space-y-6">
+      {totalQuestions > 0 && (
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide text-center">
+          Question {questionNumber} of {totalQuestions}
+        </p>
+      )}
       {question.image_url && (
         <img src={question.image_url} alt="Question image" className="w-full rounded-xl object-cover max-h-48" />
       )}
@@ -579,11 +692,24 @@ function PresenterQuestionView({
       {/* Timer bar */}
       <div className="space-y-1">
         <div className="flex justify-between text-sm text-muted-foreground">
-          <span>{Math.ceil(remaining)}s remaining</span>
-          <span aria-live="polite">{answeredCount} / {totalParticipants} answered</span>
+          <span className={remaining < 5 ? "text-destructive font-semibold" : ""}>
+            {Math.ceil(remaining)}s remaining
+          </span>
+          <span aria-live="polite" aria-atomic="true">
+            <span className="font-semibold text-foreground">{answeredCount}</span>
+            {" / "}
+            {safeTotal} answered
+          </span>
         </div>
         <div className="h-3 rounded-full bg-muted overflow-hidden">
-          <div className="h-full rounded-full bg-primary transition-all duration-200" style={{ width: `${pct}%` }} />
+          <div className={`h-full rounded-full transition-all duration-200 ${remaining < 5 ? "bg-destructive" : "bg-primary"}`} style={{ width: `${pct}%` }} />
+        </div>
+        {/* Answered-count progress bar — fills as participants submit */}
+        <div className="h-1.5 rounded-full bg-muted overflow-hidden" aria-hidden="true">
+          <div
+            className="h-full rounded-full bg-green-500 transition-all duration-300"
+            style={{ width: `${answeredPct}%` }}
+          />
         </div>
       </div>
       {/* Options display-only */}
@@ -790,6 +916,7 @@ function SessionControls({
   error,
   showNext,
   showEnd,
+  nextLabel,
 }: {
   onNext?: () => void
   onEnd?: () => void
@@ -797,6 +924,7 @@ function SessionControls({
   error: string | null
   showNext?: boolean
   showEnd?: boolean
+  nextLabel?: string
 }) {
   return (
     <div className="sticky bottom-0 border-t bg-background/95 backdrop-blur px-6 py-4">
@@ -805,7 +933,7 @@ function SessionControls({
         {showNext && onNext && (
           <button onClick={onNext} disabled={advancing}
             className="rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition">
-            {advancing ? "Loading…" : "Next →"}
+            {advancing ? "Loading…" : (nextLabel ?? "Next →")}
           </button>
         )}
         {showEnd && onEnd && (

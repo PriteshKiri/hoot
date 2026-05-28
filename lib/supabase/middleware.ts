@@ -6,9 +6,25 @@ export async function updateSession(request: NextRequest) {
     request,
   });
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  // Skip auth handling if Supabase isn't configured (e.g. missing .env.local).
+  // This prevents the middleware from throwing on every request and lets the
+  // app render so the developer can see a useful message instead of a crash.
+  if (!supabaseUrl || !supabaseAnonKey) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        "[supabase/middleware] NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY is missing. " +
+          "Auth checks are disabled. Create a .env.local (see .env.local.example) to enable them."
+      );
+    }
+    return supabaseResponse;
+  }
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         getAll() {

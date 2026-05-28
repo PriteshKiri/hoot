@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
+import { broadcastSessionEvent } from "@/lib/supabase/realtime"
 
 type RouteContext = { params: Promise<{ sessionId: string }> }
 
@@ -138,15 +139,11 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
   }
 
   // Step 3: Broadcast session_state_changed to disconnect all participants
-  await supabase.channel(`session:${sessionId}`).send({
-    type: "broadcast",
-    event: "session_state_changed",
-    payload: {
-      status: "ended",
-      currentQuestionIndex: null,
-      currentQuestion: null,
-      questionStartedAt: null,
-    },
+  await broadcastSessionEvent(sessionId, "session_state_changed", {
+    status: "ended",
+    currentQuestionIndex: null,
+    currentQuestion: null,
+    questionStartedAt: null,
   })
 
   // Step 4: Return 204 No Content

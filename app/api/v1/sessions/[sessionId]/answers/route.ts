@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import { calculateScore } from "@/lib/scoring"
+import { broadcastSessionEvent } from "@/lib/supabase/realtime"
 
 type RouteContext = { params: Promise<{ sessionId: string }> }
 
@@ -281,29 +282,10 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     .select("id", { count: "exact", head: true })
     .eq("session_id", sessionId)
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!.replace(/\/$/, "")
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-  await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${serviceRoleKey}`,
-      apikey: serviceRoleKey,
-    },
-    body: JSON.stringify({
-      messages: [
-        {
-          topic: `realtime:session:${sessionId}`,
-          event: "answer_count_updated",
-          payload: {
-            questionId,
-            answeredCount: answeredCount ?? 0,
-            totalParticipants: totalParticipants ?? 0,
-          },
-        },
-      ],
-    }),
+  await broadcastSessionEvent(sessionId, "answer_count_updated", {
+    questionId,
+    answeredCount: answeredCount ?? 0,
+    totalParticipants: totalParticipants ?? 0,
   })
 
   // Step 11: Word cloud aggregation for open_text questions (Task 16.1)
@@ -333,22 +315,9 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       .slice(0, 50)
       .map(([word, count]) => ({ word, count }))
 
-    await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${serviceRoleKey}`,
-        apikey: serviceRoleKey,
-      },
-      body: JSON.stringify({
-        messages: [
-          {
-            topic: `realtime:session:${sessionId}`,
-            event: "word_cloud_updated",
-            payload: { questionId, words: wordCloudWords },
-          },
-        ],
-      }),
+    await broadcastSessionEvent(sessionId, "word_cloud_updated", {
+      questionId,
+      words: wordCloudWords,
     })
   }
 

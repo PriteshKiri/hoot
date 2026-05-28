@@ -110,7 +110,10 @@ describe.skipIf(!ENABLED)("Integration: session advance → Realtime broadcast r
       body: JSON.stringify({
         messages: [
           {
-            topic: `realtime:session:${testSessionId}`,
+            // The Supabase Realtime REST endpoint prepends `realtime:` to the
+            // topic internally, so the JS client subscription to
+            // `session:<id>` matches the topic passed here without prefix.
+            topic: `session:${testSessionId}`,
             event: "session_state_changed",
             payload: { status: "countdown" },
           },

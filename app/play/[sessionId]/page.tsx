@@ -224,57 +224,58 @@ export default function PlayPage() {
   }, [sessionId, participantToken, participantId, displayName, avatar])
 
   // Poll session status as a fallback for missed Realtime broadcasts.
-  // Only active while in lobby or countdown — once the quiz is running,
-  // Realtime handles all transitions.
+  // Only ever advances state forward, never backward, so it can run safely
+  // alongside the Realtime channel.
   useEffect(() => {
     if (!participantToken) return
-    if (sessionStatus !== "lobby" && sessionStatus !== "countdown") return
+    if (sessionStatus === "ended") return
+
+    const order = ["lobby", "countdown", "question", "results", "leaderboard", "final_leaderboard", "ended"]
 
     const poll = async () => {
       try {
-        const res = await fetch(`/api/v1/sessions/${sessionId}`)
+        const res = await fetch(`/api/v1/sessions/${sessionId}`, { cache: "no-store" })
         if (!res.ok) return
         const data = await res.json()
         const s = data.session
         if (!s) return
-        // Only advance forward — never go back to an earlier state
-        const order = ["lobby", "countdown", "question", "results", "leaderboard", "final_leaderboard", "ended"]
+
         const currentIdx = order.indexOf(sessionStatus)
         const newIdx = order.indexOf(s.status)
-        if (newIdx > currentIdx) {
-          setSessionStatus(s.status)
-          if (s.current_question_id && s.status === "question") {
-            // Build question payload from the session data shape
-            const questions: Array<{
-              id: string; position: number; question_type: string; text: string;
-              image_url: string | null; time_limit: number;
-              answer_options: Array<{ id: string; position: number; text: string | null; image_url: string | null }>
-            }> = s.events?.questions ?? []
-            const q = questions.find((q) => q.id === s.current_question_id)
-            if (q) {
-              setCurrentQuestion({
-                id: q.id,
-                text: q.text,
-                questionType: q.question_type,
-                imageUrl: q.image_url,
-                timeLimitSeconds: q.time_limit,
-                options: q.answer_options
-                  .sort((a: { position: number }, b: { position: number }) => a.position - b.position)
-                  .map((o: { id: string; text: string | null; image_url: string | null; position: number }) => ({
-                    id: o.id,
-                    text: o.text,
-                    imageUrl: o.image_url,
-                    position: o.position,
-                  })),
-              })
-              setQuestionStartedAt(s.question_started_at ?? null)
-              setSelectedOptionIds([])
-              setSubmittedForQuestion(null)
-            }
+        if (newIdx <= currentIdx) return
+
+        setSessionStatus(s.status)
+
+        if (s.current_question_id && s.status === "question") {
+          const questions: Array<{
+            id: string; position: number; question_type: string; text: string;
+            image_url: string | null; time_limit: number;
+            answer_options: Array<{ id: string; position: number; text: string | null; image_url: string | null }>
+          }> = s.events?.questions ?? []
+          const q = questions.find((q) => q.id === s.current_question_id)
+          if (q) {
+            setCurrentQuestion({
+              id: q.id,
+              text: q.text,
+              questionType: q.question_type,
+              imageUrl: q.image_url,
+              timeLimitSeconds: q.time_limit,
+              options: q.answer_options
+                .sort((a: { position: number }, b: { position: number }) => a.position - b.position)
+                .map((o: { id: string; text: string | null; image_url: string | null; position: number }) => ({
+                  id: o.id,
+                  text: o.text,
+                  imageUrl: o.image_url,
+                  position: o.position,
+                })),
+            })
+            setQuestionStartedAt(s.question_started_at ?? null)
+            setSelectedOptionIds([])
+            setSubmittedForQuestion(null)
           }
         }
       } catch {
-        // Ignore poll errors — Realtime is the primary channel
+        // Best-effort — Realtime is the primary channel
       }
     }
 
