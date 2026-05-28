@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { BUILT_IN_THEMES, AVAILABLE_FONTS } from "@/lib/themes"
+import { BUILT_IN_THEMES } from "@/lib/themes"
 
 type RouteContext = { params: Promise<{ eventId: string }> }
 
@@ -186,7 +186,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     updates.theme_id = theme_id
   }
 
-  // Validate and apply custom_theme if provided
+  // Validate and apply custom_theme if provided.
+  // Shape: { primaryColor?: string (hex), gradient?: string (CSS background) }
   if (custom_theme !== undefined) {
     if (custom_theme !== null) {
       if (typeof custom_theme !== "object" || Array.isArray(custom_theme)) {
@@ -202,18 +203,52 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         )
       }
       const ct = custom_theme as Record<string, unknown>
-      const validFontValues: string[] = AVAILABLE_FONTS.map((f) => f.value)
-      if (ct.fontFamily !== undefined && !validFontValues.includes(ct.fontFamily as string)) {
-        return NextResponse.json(
-          {
-            error: {
-              code: "VALIDATION_ERROR",
-              message: `custom_theme.fontFamily must be one of: ${validFontValues.join(", ")}.`,
-              field: "custom_theme",
+
+      if (ct.primaryColor !== undefined && ct.primaryColor !== null) {
+        if (
+          typeof ct.primaryColor !== "string" ||
+          !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(ct.primaryColor)
+        ) {
+          return NextResponse.json(
+            {
+              error: {
+                code: "VALIDATION_ERROR",
+                message: "custom_theme.primaryColor must be a hex colour (e.g. #7c3aed).",
+                field: "custom_theme",
+              },
             },
-          },
-          { status: 400 }
-        )
+            { status: 400 }
+          )
+        }
+      }
+
+      if (ct.gradient !== undefined && ct.gradient !== null) {
+        if (typeof ct.gradient !== "string" || ct.gradient.length > 500) {
+          return NextResponse.json(
+            {
+              error: {
+                code: "VALIDATION_ERROR",
+                message: "custom_theme.gradient must be a CSS gradient string (max 500 chars).",
+                field: "custom_theme",
+              },
+            },
+            { status: 400 }
+          )
+        }
+        // Basic safety: must start with linear-gradient/radial-gradient/conic-gradient
+        if (!/^(linear|radial|conic)-gradient\s*\(/.test(ct.gradient)) {
+          return NextResponse.json(
+            {
+              error: {
+                code: "VALIDATION_ERROR",
+                message:
+                  "custom_theme.gradient must begin with linear-gradient(, radial-gradient(, or conic-gradient(.",
+                field: "custom_theme",
+              },
+            },
+            { status: 400 }
+          )
+        }
       }
     }
     updates.custom_theme = custom_theme

@@ -1,116 +1,278 @@
 /**
- * Built-in colour themes for Hoot events.
+ * Built-in colour themes and gradient presets for Hoot events.
  *
- * Each theme defines CSS variable values that are applied to the presenter
- * screen, participant screen, and join pages.
+ * Each theme defines a primary colour and a gradient. These are translated
+ * into CSS variables (`--primary`, `--primary-foreground`, `--ring`,
+ * `--event-gradient`) via {@link buildThemeStyle}, which can be spread onto
+ * any wrapping element's `style` prop to scope the theme to that subtree.
  *
  * Requirements: 15.1, 15.2, 15.3, 15.6
  */
 
+import type { CSSProperties } from "react"
+
 export interface HootTheme {
   id: string
   name: string
+  /** Hex string used for swatches and as the default primary colour. */
   primaryColor: string
-  backgroundColor: string
-  foregroundColor: string
-  fontFamily: string
-  /** Tailwind CSS class names to apply to the root element */
-  cssVars: Record<string, string>
+  /** Pre-computed `H S% L%` string used for the `--primary` CSS variable. */
+  primaryHsl: string
+  /** Pre-computed `H S% L%` string used for `--primary-foreground`. */
+  primaryForegroundHsl: string
+  /** Default gradient associated with this theme. */
+  gradient: string
+}
+
+export interface CustomTheme {
+  /** Hex colour to override the theme's primary colour. */
+  primaryColor?: string
+  /** CSS background string (e.g. linear-gradient(...)) to override default gradient. */
+  gradient?: string
 }
 
 export const BUILT_IN_THEMES: HootTheme[] = [
   {
     id: "violet",
-    name: "Violet (Default)",
+    name: "Violet",
     primaryColor: "#7c3aed",
-    backgroundColor: "#ffffff",
-    foregroundColor: "#09090b",
-    fontFamily: "Inter, sans-serif",
-    cssVars: {
-      "--primary": "262.1 83.3% 57.8%",
-      "--background": "0 0% 100%",
-      "--foreground": "240 10% 3.9%",
-    },
+    primaryHsl: "262 83% 58%",
+    primaryForegroundHsl: "210 40% 98%",
+    gradient: "linear-gradient(135deg, #7c3aed 0%, #a855f7 50%, #ec4899 100%)",
   },
   {
     id: "ocean",
-    name: "Ocean Blue",
+    name: "Ocean",
     primaryColor: "#0ea5e9",
-    backgroundColor: "#f0f9ff",
-    foregroundColor: "#0c4a6e",
-    fontFamily: "Inter, sans-serif",
-    cssVars: {
-      "--primary": "199 89% 48%",
-      "--background": "204 100% 97%",
-      "--foreground": "201 96% 24%",
-    },
+    primaryHsl: "199 89% 48%",
+    primaryForegroundHsl: "210 40% 98%",
+    gradient: "linear-gradient(135deg, #0ea5e9 0%, #0284c7 50%, #1e3a8a 100%)",
   },
   {
     id: "forest",
-    name: "Forest Green",
+    name: "Forest",
     primaryColor: "#16a34a",
-    backgroundColor: "#f0fdf4",
-    foregroundColor: "#14532d",
-    fontFamily: "Georgia, serif",
-    cssVars: {
-      "--primary": "142 71% 45%",
-      "--background": "138 76% 97%",
-      "--foreground": "140 84% 17%",
-    },
+    primaryHsl: "142 71% 36%",
+    primaryForegroundHsl: "210 40% 98%",
+    gradient: "linear-gradient(135deg, #16a34a 0%, #059669 50%, #134e4a 100%)",
   },
   {
     id: "sunset",
-    name: "Sunset Orange",
+    name: "Sunset",
     primaryColor: "#ea580c",
-    backgroundColor: "#fff7ed",
-    foregroundColor: "#431407",
-    fontFamily: "Inter, sans-serif",
-    cssVars: {
-      "--primary": "24 95% 48%",
-      "--background": "34 100% 97%",
-      "--foreground": "20 91% 14%",
-    },
+    primaryHsl: "21 90% 48%",
+    primaryForegroundHsl: "210 40% 98%",
+    gradient: "linear-gradient(135deg, #f97316 0%, #ef4444 50%, #db2777 100%)",
   },
   {
     id: "midnight",
-    name: "Midnight Dark",
-    primaryColor: "#a78bfa",
-    backgroundColor: "#0f0f23",
-    foregroundColor: "#e2e8f0",
-    fontFamily: "JetBrains Mono, monospace",
-    cssVars: {
-      "--primary": "258 90% 74%",
-      "--background": "240 43% 10%",
-      "--foreground": "214 32% 91%",
-    },
+    name: "Midnight",
+    primaryColor: "#6366f1",
+    primaryHsl: "239 84% 67%",
+    primaryForegroundHsl: "210 40% 98%",
+    gradient: "linear-gradient(135deg, #1e1b4b 0%, #4338ca 50%, #6366f1 100%)",
   },
   {
     id: "rose",
-    name: "Rose Pink",
+    name: "Rose",
     primaryColor: "#e11d48",
-    backgroundColor: "#fff1f2",
-    foregroundColor: "#4c0519",
-    fontFamily: "Inter, sans-serif",
-    cssVars: {
-      "--primary": "347 77% 50%",
-      "--background": "356 100% 97%",
-      "--foreground": "343 88% 16%",
-    },
+    primaryHsl: "347 77% 50%",
+    primaryForegroundHsl: "210 40% 98%",
+    gradient: "linear-gradient(135deg, #fb7185 0%, #e11d48 50%, #9f1239 100%)",
+  },
+  {
+    id: "amber",
+    name: "Amber",
+    primaryColor: "#d97706",
+    primaryHsl: "32 95% 44%",
+    primaryForegroundHsl: "20 91% 14%",
+    gradient: "linear-gradient(135deg, #fbbf24 0%, #d97706 50%, #92400e 100%)",
+  },
+  {
+    id: "teal",
+    name: "Teal",
+    primaryColor: "#0d9488",
+    primaryHsl: "173 80% 32%",
+    primaryForegroundHsl: "210 40% 98%",
+    gradient: "linear-gradient(135deg, #2dd4bf 0%, #0d9488 50%, #0f766e 100%)",
   },
 ]
 
-export const AVAILABLE_FONTS = [
-  { id: "inter", label: "Inter (Sans-serif)", value: "Inter, sans-serif" },
-  { id: "georgia", label: "Georgia (Serif)", value: "Georgia, serif" },
-  { id: "mono", label: "JetBrains Mono (Monospace)", value: "JetBrains Mono, monospace" },
-] as const
+export interface GradientPreset {
+  id: string
+  name: string
+  /** Full CSS background value (linear/radial gradient). */
+  value: string
+}
 
-export type FontId = (typeof AVAILABLE_FONTS)[number]["id"]
+/**
+ * Curated gradient presets that pair nicely with any primary colour.
+ * Stored as standard CSS `linear-gradient()` strings so they can be applied
+ * directly via inline `style.background` or to a CSS variable.
+ */
+export const GRADIENT_PRESETS: GradientPreset[] = [
+  { id: "purple-haze", name: "Purple Haze", value: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" },
+  { id: "sunset-blaze", name: "Sunset Blaze", value: "linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%)" },
+  { id: "ocean-breeze", name: "Ocean Breeze", value: "linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%)" },
+  { id: "lush-forest", name: "Lush Forest", value: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)" },
+  { id: "midnight-city", name: "Midnight City", value: "linear-gradient(135deg, #232526 0%, #414345 100%)" },
+  { id: "cotton-candy", name: "Cotton Candy", value: "linear-gradient(135deg, #ec38bc 0%, #fdeff9 100%)" },
+  { id: "wildfire", name: "Wildfire", value: "linear-gradient(135deg, #f12711 0%, #f5af19 100%)" },
+  { id: "aurora", name: "Aurora", value: "linear-gradient(135deg, #00c6ff 0%, #0072ff 100%)" },
+  { id: "spring-meadow", name: "Spring Meadow", value: "linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%)" },
+  { id: "cosmic-fusion", name: "Cosmic Fusion", value: "linear-gradient(135deg, #ff00cc 0%, #333399 100%)" },
+  { id: "mango-tango", name: "Mango Tango", value: "linear-gradient(135deg, #ffb347 0%, #ffcc33 100%)" },
+  { id: "deep-sea", name: "Deep Sea", value: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)" },
+]
 
-export function getThemeById(id: string): HootTheme | undefined {
+export function getThemeById(id: string | null | undefined): HootTheme | undefined {
+  if (!id) return undefined
   return BUILT_IN_THEMES.find((t) => t.id === id)
 }
 
 export function getDefaultTheme(): HootTheme {
   return BUILT_IN_THEMES[0]
+}
+
+export function getGradientById(id: string | null | undefined): GradientPreset | undefined {
+  if (!id) return undefined
+  return GRADIENT_PRESETS.find((g) => g.id === id)
+}
+
+// ---------------------------------------------------------------------------
+// Colour utilities
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a hex colour (e.g. `#ff00aa` or `#f0a`) to its HSL components.
+ * Returns hue in [0, 360), saturation/lightness as percentages [0, 100].
+ */
+export function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  let normalized = hex.trim().replace(/^#/, "")
+  if (normalized.length === 3) {
+    normalized = normalized
+      .split("")
+      .map((c) => c + c)
+      .join("")
+  }
+  if (normalized.length !== 6) {
+    return { h: 0, s: 0, l: 0 }
+  }
+
+  const r = parseInt(normalized.slice(0, 2), 16) / 255
+  const g = parseInt(normalized.slice(2, 4), 16) / 255
+  const b = parseInt(normalized.slice(4, 6), 16) / 255
+
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const delta = max - min
+
+  let h = 0
+  if (delta !== 0) {
+    if (max === r) h = ((g - b) / delta) % 6
+    else if (max === g) h = (b - r) / delta + 2
+    else h = (r - g) / delta + 4
+    h = Math.round(h * 60)
+    if (h < 0) h += 360
+  }
+
+  const l = (max + min) / 2
+  const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1))
+
+  return {
+    h,
+    s: Math.round(s * 100),
+    l: Math.round(l * 100),
+  }
+}
+
+/** Format hex colour as the `H S% L%` string used by Tailwind CSS variables. */
+export function hexToHslString(hex: string): string {
+  const { h, s, l } = hexToHsl(hex)
+  return `${h} ${s}% ${l}%`
+}
+
+/**
+ * Pick a foreground colour (as `H S% L%`) that has good contrast against the
+ * given background hex. Uses perceived luminance, not just lightness, so it
+ * works for both saturated and unsaturated colours.
+ */
+export function getContrastingForegroundHsl(hex: string): string {
+  let normalized = hex.trim().replace(/^#/, "")
+  if (normalized.length === 3) {
+    normalized = normalized
+      .split("")
+      .map((c) => c + c)
+      .join("")
+  }
+  if (normalized.length !== 6) return "210 40% 98%"
+
+  const r = parseInt(normalized.slice(0, 2), 16) / 255
+  const g = parseInt(normalized.slice(2, 4), 16) / 255
+  const b = parseInt(normalized.slice(4, 6), 16) / 255
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  return luminance > 0.6 ? "240 10% 3.9%" : "210 40% 98%"
+}
+
+// ---------------------------------------------------------------------------
+// Style builder
+// ---------------------------------------------------------------------------
+
+export type ThemeCSSProperties = CSSProperties & {
+  "--primary"?: string
+  "--primary-foreground"?: string
+  "--ring"?: string
+  "--event-gradient"?: string
+}
+
+export interface ThemeInput {
+  themeId?: string | null
+  customTheme?: CustomTheme | null
+}
+
+/**
+ * Build a `style` object with CSS variable overrides for the given event
+ * theme. Spread onto any wrapper to apply primary colour, ring, and gradient
+ * to its subtree:
+ *
+ * ```tsx
+ * <div style={buildThemeStyle({ themeId, customTheme })}>...</div>
+ * ```
+ */
+export function buildThemeStyle({
+  themeId,
+  customTheme,
+}: ThemeInput): ThemeCSSProperties {
+  const theme = getThemeById(themeId) ?? getDefaultTheme()
+
+  const primaryHsl = customTheme?.primaryColor
+    ? hexToHslString(customTheme.primaryColor)
+    : theme.primaryHsl
+
+  const primaryForegroundHsl = customTheme?.primaryColor
+    ? getContrastingForegroundHsl(customTheme.primaryColor)
+    : theme.primaryForegroundHsl
+
+  const gradient = customTheme?.gradient ?? theme.gradient
+
+  return {
+    "--primary": primaryHsl,
+    "--primary-foreground": primaryForegroundHsl,
+    "--ring": primaryHsl,
+    "--event-gradient": gradient,
+  }
+}
+
+/** Resolve the effective primary colour (hex) for a given event theme. */
+export function resolvePrimaryHex({ themeId, customTheme }: ThemeInput): string {
+  if (customTheme?.primaryColor) return customTheme.primaryColor
+  const theme = getThemeById(themeId) ?? getDefaultTheme()
+  return theme.primaryColor
+}
+
+/** Resolve the effective gradient CSS string for a given event theme. */
+export function resolveGradient({ themeId, customTheme }: ThemeInput): string {
+  if (customTheme?.gradient) return customTheme.gradient
+  const theme = getThemeById(themeId) ?? getDefaultTheme()
+  return theme.gradient
 }

@@ -3,33 +3,51 @@
 import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
+import { ArrowLeft, Clock, HelpCircle, ListChecks } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { QuestionTypeSelector } from "@/components/QuestionTypeSelector"
-import { AnswerOptionEditor, type AnswerOptionDraft } from "@/components/AnswerOptionEditor"
+import {
+  AnswerOptionEditor,
+  REQUIRED_OPTION_COUNT,
+  type AnswerOptionDraft,
+} from "@/components/AnswerOptionEditor"
 import type { QuestionType } from "@/components/QuestionCard"
 
-const CHOICE_TYPES: QuestionType[] = ["single_select", "multi_select", "image_choice"]
-const CORRECT_REQUIRED_TYPES: QuestionType[] = ["single_select", "multi_select"]
+const SUPPORTED_TYPES: QuestionType[] = ["single_select", "multi_select"]
 
 interface FormErrors {
-  question_type?: string
   text?: string
   time_limit?: string
   answer_options?: string
-  rating_min?: string
-  rating_max?: string
   general?: string
+}
+
+function makeEmptyOptions(): AnswerOptionDraft[] {
+  return Array.from({ length: REQUIRED_OPTION_COUNT }, () => ({ text: "", is_correct: false }))
+}
+
+/** Normalize any loaded options into exactly four entries. */
+function normalizeOptions(
+  loaded: { text: string | null; is_correct: boolean }[]
+): AnswerOptionDraft[] {
+  const base = loaded
+    .slice(0, REQUIRED_OPTION_COUNT)
+    .map((o) => ({ text: o.text ?? "", is_correct: !!o.is_correct }))
+  while (base.length < REQUIRED_OPTION_COUNT) {
+    base.push({ text: "", is_correct: false })
+  }
+  return base
 }
 
 /**
  * Edit Question page — Client Component.
  *
- * Fetches existing question data from GET /api/v1/events/[eventId]/questions/[questionId],
- * pre-populates the form, and on submit sends PATCH to the same endpoint.
- * On success: redirect to /events/[eventId]
+ * Mirrors the new-question page: two-column configuration / prompt layout,
+ * restricted to single/multi-select, and exactly {@link REQUIRED_OPTION_COUNT}
+ * answer options.
  *
  * Requirements: 2.3, 3.1–3.8
  */
@@ -45,16 +63,8 @@ export default function EditQuestionPage() {
   const [questionType, setQuestionType] = useState<QuestionType>("single_select")
   const [text, setText] = useState("")
   const [timeLimit, setTimeLimit] = useState(20)
-  const [answerOptions, setAnswerOptions] = useState<AnswerOptionDraft[]>([
-    { text: "", is_correct: false },
-    { text: "", is_correct: false },
-  ])
-  const [ratingMin, setRatingMin] = useState(1)
-  const [ratingMax, setRatingMax] = useState(5)
+  const [answerOptions, setAnswerOptions] = useState<AnswerOptionDraft[]>(makeEmptyOptions)
   const [errors, setErrors] = useState<FormErrors>({})
-
-  const isChoiceType = CHOICE_TYPES.includes(questionType)
-  const isRatingScale = questionType === "rating_scale"
 
   // Fetch existing question data on mount
   useEffect(() => {
@@ -70,23 +80,19 @@ export default function EditQuestionPage() {
         const body = await res.json()
         const q = body.question
 
-        setQuestionType(q.question_type as QuestionType)
+        // Legacy types fall back to single_select so the form stays usable.
+        const loadedType = q.question_type as QuestionType
+        setQuestionType(SUPPORTED_TYPES.includes(loadedType) ? loadedType : "single_select")
         setText(q.text ?? "")
         setTimeLimit(q.time_limit ?? 20)
-
-        if (q.rating_min != null) setRatingMin(q.rating_min)
-        if (q.rating_max != null) setRatingMax(q.rating_max)
 
         if (Array.isArray(q.answer_options) && q.answer_options.length > 0) {
           const sorted = [...q.answer_options].sort(
             (a: { position: number }, b: { position: number }) => a.position - b.position
           )
-          setAnswerOptions(
-            sorted.map((opt: { text: string | null; is_correct: boolean }) => ({
-              text: opt.text ?? "",
-              is_correct: opt.is_correct ?? false,
-            }))
-          )
+          setAnswerOptions(normalizeOptions(sorted))
+        } else {
+          setAnswerOptions(makeEmptyOptions())
         }
       } catch {
         setFetchError("An unexpected error occurred while loading the question.")
@@ -111,27 +117,15 @@ export default function EditQuestionPage() {
       next.time_limit = "Time limit must be between 5 and 120 seconds."
     }
 
-    if (isChoiceType) {
-      if (answerOptions.length < 2 || answerOptions.length > 4) {
-        next.answer_options = "You must have between 2 and 4 answer options."
-      } else if (CORRECT_REQUIRED_TYPES.includes(questionType)) {
-        const hasCorrect = answerOptions.some((o) => o.is_correct)
-        if (!hasCorrect) {
-          next.answer_options = "At least one answer option must be marked as correct."
-        }
-      }
-    }
-
-    if (isRatingScale) {
-      if (!Number.isInteger(ratingMin) || ratingMin < 1 || ratingMin > 10) {
-        next.rating_min = "Rating minimum must be between 1 and 10."
-      }
-      if (!Number.isInteger(ratingMax) || ratingMax < 1 || ratingMax > 10) {
-        next.rating_max = "Rating maximum must be between 1 and 10."
-      }
-      if (!next.rating_min && !next.rating_max && ratingMin >= ratingMax) {
-        next.rating_min = "Rating minimum must be less than the maximum."
-      }
+    if (answerOptions.length !== REQUIRED_OPTION_COUNT) {
+      next.answer_options = `You must provide exactly ${REQUIRED_OPTION_COUNT} answer options.`
+    } else if (answerOptions.some((o) => o.text.trim().length === 0)) {
+      next.answer_options = "All four answer options must be filled in."
+    } else if (!answerOptions.some((o) => o.is_correct)) {
+      next.answer_options =
+        questionType === "single_select"
+          ? "Pick the correct answer."
+          : "Tick at least one correct answer."
     }
 
     setErrors(next)
@@ -139,13 +133,20 @@ export default function EditQuestionPage() {
   }
 
   function handleTypeChange(type: QuestionType) {
+    if (!SUPPORTED_TYPES.includes(type)) return
     setQuestionType(type)
     setErrors({})
-    if (CHOICE_TYPES.includes(type) && answerOptions.length < 2) {
-      setAnswerOptions([
-        { text: "", is_correct: false },
-        { text: "", is_correct: false },
-      ])
+    if (type === "single_select") {
+      let kept = false
+      setAnswerOptions((prev) =>
+        prev.map((opt) => {
+          if (opt.is_correct && !kept) {
+            kept = true
+            return opt
+          }
+          return { ...opt, is_correct: false }
+        })
+      )
     }
   }
 
@@ -156,23 +157,15 @@ export default function EditQuestionPage() {
     setLoading(true)
     setErrors({})
 
-    const payload: Record<string, unknown> = {
+    const payload = {
       question_type: questionType,
       text: text.trim(),
       time_limit: timeLimit,
-    }
-
-    if (isChoiceType) {
-      payload.answer_options = answerOptions.map((opt, idx) => ({
-        text: opt.text || null,
+      answer_options: answerOptions.map((opt, idx) => ({
+        text: opt.text.trim(),
         is_correct: opt.is_correct,
         position: idx + 1,
-      }))
-    }
-
-    if (isRatingScale) {
-      payload.rating_min = ratingMin
-      payload.rating_max = ratingMax
+      })),
     }
 
     try {
@@ -187,7 +180,7 @@ export default function EditQuestionPage() {
       if (!res.ok) {
         const apiError = body?.error
         if (apiError?.field) {
-          setErrors({ [apiError.field]: apiError.message })
+          setErrors({ [apiError.field as keyof FormErrors]: apiError.message })
         } else {
           setErrors({ general: apiError?.message ?? "Failed to update question." })
         }
@@ -204,13 +197,14 @@ export default function EditQuestionPage() {
 
   if (fetching) {
     return (
-      <div className="p-8 max-w-2xl">
+      <div className="p-6 sm:p-8 max-w-6xl mx-auto">
         <div className="mb-6">
           <Link
             href={`/events/${eventId}`}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            ← Back to Event
+            <ArrowLeft className="h-4 w-4" />
+            Back to Event
           </Link>
         </div>
         <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
@@ -222,13 +216,14 @@ export default function EditQuestionPage() {
 
   if (fetchError) {
     return (
-      <div className="p-8 max-w-2xl">
+      <div className="p-6 sm:p-8 max-w-6xl mx-auto">
         <div className="mb-6">
           <Link
             href={`/events/${eventId}`}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            ← Back to Event
+            <ArrowLeft className="h-4 w-4" />
+            Back to Event
           </Link>
         </div>
         <div
@@ -242,167 +237,176 @@ export default function EditQuestionPage() {
   }
 
   return (
-    <div className="p-8 max-w-2xl">
+    <div className="p-6 sm:p-8 max-w-6xl mx-auto">
       {/* Back link */}
       <div className="mb-6">
         <Link
           href={`/events/${eventId}`}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          ← Back to Event
+          <ArrowLeft className="h-4 w-4" />
+          Back to Event
         </Link>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Edit Question</CardTitle>
-          <CardDescription>Update the question details below.</CardDescription>
-        </CardHeader>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight">Edit Question</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Update the configuration on the left and edit the prompt and answers on the right.
+        </p>
+      </div>
 
-        <form onSubmit={handleSubmit} noValidate>
-          <CardContent className="space-y-6">
-            {errors.general && (
-              <div
-                role="alert"
-                className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive"
-              >
-                {errors.general}
-              </div>
-            )}
-
-            {/* Question type */}
-            <QuestionTypeSelector value={questionType} onChange={handleTypeChange} />
-            {errors.question_type && (
-              <p role="alert" className="text-sm text-destructive -mt-4">
-                {errors.question_type}
-              </p>
-            )}
-
-            {/* Question text */}
-            <div className="space-y-2">
-              <Label htmlFor="text">
-                Question Text <span aria-hidden="true" className="text-destructive">*</span>
-              </Label>
-              <textarea
-                id="text"
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
-                placeholder="Enter your question…"
-                maxLength={255}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                aria-describedby={errors.text ? "text-error" : undefined}
-                aria-invalid={!!errors.text}
-              />
-              {errors.text && (
-                <p id="text-error" role="alert" className="text-sm text-destructive">
-                  {errors.text}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground text-right">{text.length}/255</p>
-            </div>
-
-            {/* Time limit */}
-            <div className="space-y-2">
-              <Label htmlFor="time_limit">
-                Time Limit (seconds){" "}
-                <span className="text-muted-foreground font-normal text-xs">(5–120)</span>
-              </Label>
-              <Input
-                id="time_limit"
-                type="number"
-                min={5}
-                max={120}
-                value={timeLimit}
-                onChange={(e) => setTimeLimit(Number(e.target.value))}
-                aria-describedby={errors.time_limit ? "time-limit-error" : undefined}
-                aria-invalid={!!errors.time_limit}
-                className="w-32"
-              />
-              {errors.time_limit && (
-                <p id="time-limit-error" role="alert" className="text-sm text-destructive">
-                  {errors.time_limit}
-                </p>
-              )}
-            </div>
-
-            {/* Answer options — for choice types */}
-            {isChoiceType && (
-              <AnswerOptionEditor
-                options={answerOptions}
-                onChange={setAnswerOptions}
-                showCorrect={CORRECT_REQUIRED_TYPES.includes(questionType)}
-                error={errors.answer_options}
-              />
-            )}
-
-            {/* Rating scale config */}
-            {isRatingScale && (
-              <div className="space-y-4">
-                <p className="text-sm font-medium">Rating Scale</p>
-                <div className="flex items-start gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="rating_min">
-                      Minimum{" "}
-                      <span className="text-muted-foreground font-normal text-xs">(1–10)</span>
-                    </Label>
-                    <Input
-                      id="rating_min"
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={ratingMin}
-                      onChange={(e) => setRatingMin(Number(e.target.value))}
-                      aria-describedby={errors.rating_min ? "rating-min-error" : undefined}
-                      aria-invalid={!!errors.rating_min}
-                      className="w-24"
-                    />
-                    {errors.rating_min && (
-                      <p id="rating-min-error" role="alert" className="text-sm text-destructive">
-                        {errors.rating_min}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="rating_max">
-                      Maximum{" "}
-                      <span className="text-muted-foreground font-normal text-xs">(1–10)</span>
-                    </Label>
-                    <Input
-                      id="rating_max"
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={ratingMax}
-                      onChange={(e) => setRatingMax(Number(e.target.value))}
-                      aria-describedby={errors.rating_max ? "rating-max-error" : undefined}
-                      aria-invalid={!!errors.rating_max}
-                      className="w-24"
-                    />
-                    {errors.rating_max && (
-                      <p id="rating-max-error" role="alert" className="text-sm text-destructive">
-                        {errors.rating_max}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-
-          <div className="flex gap-3 px-6 pb-6">
-            <Button type="submit" disabled={loading} className="flex-1">
-              {loading ? "Saving…" : "Save Changes"}
-            </Button>
-            <Link
-              href={`/events/${eventId}`}
-              className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
-            >
-              Cancel
-            </Link>
+      <form onSubmit={handleSubmit} noValidate>
+        {errors.general && (
+          <div
+            role="alert"
+            className="mb-6 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          >
+            {errors.general}
           </div>
-        </form>
-      </Card>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6 items-start">
+          {/* Left column — configuration */}
+          <aside className="space-y-6 lg:sticky lg:top-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ListChecks className="h-4 w-4 text-muted-foreground" />
+                  Question Type
+                </CardTitle>
+                <CardDescription>
+                  Pick how participants should answer this question.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <QuestionTypeSelector value={questionType} onChange={handleTypeChange} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  Time Limit
+                </CardTitle>
+                <CardDescription>
+                  How long participants have to answer, in seconds.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <Label htmlFor="time_limit">
+                    Seconds{" "}
+                    <span className="text-muted-foreground font-normal text-xs">(5–120)</span>
+                  </Label>
+                  <Input
+                    id="time_limit"
+                    type="number"
+                    min={5}
+                    max={120}
+                    value={timeLimit}
+                    onChange={(e) => setTimeLimit(Number(e.target.value))}
+                    aria-describedby={errors.time_limit ? "time-limit-error" : undefined}
+                    aria-invalid={!!errors.time_limit}
+                    className="w-32"
+                  />
+                  {errors.time_limit && (
+                    <p id="time-limit-error" role="alert" className="text-sm text-destructive">
+                      {errors.time_limit}
+                    </p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-muted/30">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                  Tips
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="text-xs text-muted-foreground space-y-1.5 list-disc list-inside">
+                  <li>Keep the question short — under 120 characters works best on phones.</li>
+                  <li>Every question has exactly four answer options.</li>
+                  <li>
+                    {questionType === "single_select"
+                      ? "Pick one correct answer; participants pick exactly one."
+                      : "Tick every option that is correct; participants can pick multiple."}
+                  </li>
+                  <li>20 seconds is a good default — bump it up for trickier questions.</li>
+                </ul>
+              </CardContent>
+            </Card>
+          </aside>
+
+          {/* Right column — prompt + answer options */}
+          <div className="space-y-6 min-w-0">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Question</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <textarea
+                    id="text"
+                    className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+                    placeholder="Enter your question…"
+                    maxLength={255}
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    aria-label="Question text"
+                    aria-describedby={errors.text ? "text-error" : undefined}
+                    aria-invalid={!!errors.text}
+                    required
+                  />
+                  {errors.text && (
+                    <p id="text-error" role="alert" className="text-sm text-destructive">
+                      {errors.text}
+                    </p>
+                  )}
+                  <p
+                    className={`text-xs tabular-nums text-right ${
+                      text.length >= 255 ? "text-destructive" : "text-muted-foreground"
+                    }`}
+                  >
+                    {text.length}/255
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Answers</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AnswerOptionEditor
+                  options={answerOptions}
+                  onChange={setAnswerOptions}
+                  mode={questionType === "single_select" ? "single" : "multi"}
+                  error={errors.answer_options}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Footer actions */}
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-2">
+              <Link
+                href={`/events/${eventId}`}
+                className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
+              >
+                Cancel
+              </Link>
+              <Button type="submit" disabled={loading} className="sm:min-w-[160px]">
+                {loading ? "Saving…" : "Save Changes"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </form>
     </div>
   )
 }

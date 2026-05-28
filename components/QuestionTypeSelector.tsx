@@ -11,32 +11,20 @@ const QUESTION_TYPES: { value: QuestionType; label: string; description: string 
   {
     value: "single_select",
     label: "Single Select",
-    description: "One correct answer from multiple choices",
+    description: "Only one correct answer. Participants pick one.",
   },
   {
     value: "multi_select",
     label: "Multi Select",
-    description: "One or more correct answers",
-  },
-  {
-    value: "open_text",
-    label: "Open Text",
-    description: "Free-form text response",
-  },
-  {
-    value: "rating_scale",
-    label: "Rating Scale",
-    description: "Numeric rating within a defined range",
-  },
-  {
-    value: "image_choice",
-    label: "Image Choice",
-    description: "Multiple choice with image options",
+    description: "One or more correct answers. Participants pick all that apply.",
   },
 ]
 
 /**
  * QuestionTypeSelector — radio group for selecting the question type.
+ *
+ * Only `single_select` and `multi_select` are exposed. All other legacy types
+ * (open_text, rating_scale, image_choice) are intentionally hidden from the UI.
  *
  * Requirements: 3.1
  */
@@ -44,7 +32,7 @@ export function QuestionTypeSelector({ value, onChange }: QuestionTypeSelectorPr
   return (
     <fieldset>
       <legend className="text-sm font-medium mb-3">Question Type</legend>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-2">
         {QUESTION_TYPES.map((type) => {
           const isSelected = value === type.value
           return (
