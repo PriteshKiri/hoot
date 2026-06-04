@@ -6,12 +6,11 @@ An open-source, real-time quiz and polling platform inspired by Kahoot and Menti
 
 ## Features
 
-- **Event authoring** — build quiz decks with multiple question types: single-select, multi-select, open text, rating scale, and image-based
+- **Event authoring** — build quiz decks with single-select and multi-select multiple-choice questions
 - **Publishing** — generate a 6-character join code and QR code; share a URL
 - **Live sessions** — real-time sync via Supabase Realtime (Broadcast + Presence)
 - **Speed-weighted scoring** — up to 1000 points per question, server-authoritative
 - **Leaderboard** — live rankings after each question and a final podium with confetti
-- **Word clouds** — open-text responses visualised in real time on the presenter screen
 - **Analytics** — per-question response distribution, average response time, CSV export
 - **Theming** — 5+ built-in colour themes, custom colours/fonts, logo upload
 - **Mobile-first** — works on any browser, 320 px–2560 px viewports, 44 px touch targets
@@ -45,7 +44,7 @@ An open-source, real-time quiz and polling platform inspired by Kahoot and Menti
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/your-username/hoot.git
+git clone https://github.com/PriteshKiri/hoot.git
 cd hoot
 ```
 
@@ -183,9 +182,3 @@ Pull requests are welcome. For significant changes, open an issue first to discu
 4. Push and open a pull request
 
 Please make sure tests pass before submitting: `npm test && npm run test:e2e`.
-
----
-
-## License
-
-[MIT](LICENSE)

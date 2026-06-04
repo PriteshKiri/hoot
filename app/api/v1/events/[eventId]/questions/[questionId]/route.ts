@@ -431,6 +431,15 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
  *
  * Deletes a question. answer_options are cascade-deleted via FK.
  *
+ * Behavior:
+ *   - 409 LIVE_QUESTION if a non-ended session is currently mid-flight on
+ *     this question (status in countdown / question / results / leaderboard).
+ *     Trying to delete the live question mid-game would corrupt the running
+ *     session, so we block it explicitly.
+ *   - Before the actual delete, we null out `sessions.current_question_id`
+ *     references so the FK doesn't reject the delete on installs where the
+ *     accompanying cascade migration hasn't been applied yet.
+ *
  * Requirements: 3.1–3.8
  */
 export async function DELETE(_request: NextRequest, { params }: RouteContext) {
@@ -479,6 +488,38 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
     )
   }
 
+  // Block deletion if the question is currently being shown in a live session.
+  const liveStatuses = ["countdown", "question", "results", "leaderboard"]
+  const { data: liveSessions } = await supabase
+    .from("sessions")
+    .select("id")
+    .eq("event_id", eventId)
+    .eq("current_question_id", questionId)
+    .in("status", liveStatuses)
+    .limit(1)
+
+  if (liveSessions && liveSessions.length > 0) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "LIVE_QUESTION",
+          message:
+            "This question is currently live in a running session. End or skip it before deleting.",
+        },
+      },
+      { status: 409 }
+    )
+  }
+
+  // Defensive FK cleanup so the delete succeeds even on databases where the
+  // cascade migration (20240101000006_questions_cascade_delete.sql) hasn't
+  // been applied yet.
+  await supabase
+    .from("sessions")
+    .update({ current_question_id: null })
+    .eq("event_id", eventId)
+    .eq("current_question_id", questionId)
+
   const { error: deleteError } = await supabase
     .from("questions")
     .delete()
@@ -486,8 +527,36 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
     .eq("event_id", eventId)
 
   if (deleteError) {
+    // Postgres FK violation surface code is "23503". This typically means the
+    // database is missing the cascade migration and historical
+    // participant_answers / analytics_snapshots still reference the question.
+    const pgCode = (deleteError as { code?: string }).code
+    const isFkViolation =
+      pgCode === "23503" ||
+      deleteError.message?.toLowerCase().includes("foreign key")
+
+    if (isFkViolation) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "DELETE_BLOCKED_BY_REFERENCES",
+            message:
+              "Cannot delete this question because it has historical session data. Apply the latest database migrations and try again.",
+          },
+        },
+        { status: 409 }
+      )
+    }
+
     return NextResponse.json(
-      { error: { code: "DELETE_FAILED", message: "Failed to delete question." } },
+      {
+        error: {
+          code: "DELETE_FAILED",
+          message: deleteError.message
+            ? `Failed to delete question: ${deleteError.message}`
+            : "Failed to delete question.",
+        },
+      },
       { status: 500 }
     )
   }

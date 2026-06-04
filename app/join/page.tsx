@@ -56,12 +56,12 @@ export default function JoinPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm space-y-8">
+    <div className="min-h-[100dvh] flex items-center justify-center bg-background px-4 py-8">
+      <div className="w-full max-w-sm space-y-6 sm:space-y-8">
         {/* Brand */}
         <div className="text-center">
-          <div className="text-5xl mb-3" aria-hidden="true">🦉</div>
-          <h1 className="text-3xl font-bold tracking-tight">Join Hoot</h1>
+          <div className="text-4xl sm:text-5xl mb-2 sm:mb-3" aria-hidden="true">🦉</div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Join Hoot</h1>
           <p className="mt-2 text-muted-foreground text-sm">
             Enter the join code shown on the presenter&apos;s screen
           </p>
@@ -89,7 +89,7 @@ export default function JoinPage() {
                 setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))
               }}
               placeholder="e.g. ABC123"
-              className="w-full rounded-md border border-input bg-background px-4 py-3 text-center text-2xl font-mono font-bold tracking-widest uppercase placeholder:text-muted-foreground/50 placeholder:text-base placeholder:font-normal placeholder:tracking-normal focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+              className="w-full rounded-md border border-input bg-background px-3 py-3 text-center text-xl sm:text-2xl font-mono font-bold tracking-[0.25em] sm:tracking-widest uppercase placeholder:text-muted-foreground/50 placeholder:text-base placeholder:font-normal placeholder:tracking-normal focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
               aria-describedby={error ? "join-code-error" : undefined}
               aria-invalid={error ? "true" : undefined}
               disabled={loading}
@@ -108,7 +108,7 @@ export default function JoinPage() {
           <button
             type="submit"
             disabled={loading || code.length === 0}
-            className="w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            className="w-full rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
             {loading ? "Looking up…" : "Join"}
           </button>

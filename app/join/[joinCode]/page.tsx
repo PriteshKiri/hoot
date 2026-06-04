@@ -137,7 +137,7 @@ export default function JoinNamePage() {
   // Loading state while resolving join code
   if (lookupLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-[100dvh] flex items-center justify-center bg-background px-4">
         <div className="text-center space-y-3">
           <div className="text-4xl animate-pulse" aria-hidden="true">🦉</div>
           <p className="text-muted-foreground">Looking up session…</p>
@@ -149,7 +149,7 @@ export default function JoinNamePage() {
   // Error state if session not found
   if (lookupError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <div className="min-h-[100dvh] flex items-center justify-center bg-background px-4 py-8">
         <div className="w-full max-w-sm text-center space-y-6">
           <div className="text-5xl" aria-hidden="true">😕</div>
           <div>
@@ -158,7 +158,7 @@ export default function JoinNamePage() {
           </div>
           <a
             href="/join"
-            className="inline-block rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition"
+            className="inline-block rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition"
           >
             Try a different code
           </a>
@@ -168,12 +168,12 @@ export default function JoinNamePage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
-      <div className="w-full max-w-md space-y-8">
+    <div className="min-h-[100dvh] flex items-start sm:items-center justify-center bg-background px-3 sm:px-4 py-6 sm:py-8">
+      <div className="w-full max-w-md space-y-6 sm:space-y-8">
         {/* Header */}
         <div className="text-center">
-          <div className="text-4xl mb-2" aria-hidden="true">🦉</div>
-          <h1 className="text-2xl font-bold tracking-tight">
+          <div className="text-3xl sm:text-4xl mb-2" aria-hidden="true">🦉</div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight break-words">
             {eventTitle || "Join Session"}
           </h1>
           <p className="mt-1 text-muted-foreground text-sm">
@@ -181,7 +181,7 @@ export default function JoinNamePage() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+        <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6" noValidate>
           {/* Display name */}
           <div className="space-y-2">
             <label
@@ -201,7 +201,7 @@ export default function JoinNamePage() {
                 setDisplayName(e.target.value)
               }}
               placeholder="Enter your name"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+              className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
               aria-describedby={submitError ? "submit-error" : undefined}
               disabled={submitting}
             />
@@ -214,7 +214,7 @@ export default function JoinNamePage() {
           <div className="space-y-3">
             <p className="text-sm font-medium text-foreground">Choose Your Avatar</p>
             <div
-              className="grid grid-cols-6 gap-2 sm:grid-cols-8"
+              className="grid grid-cols-6 gap-1.5 sm:gap-2 sm:grid-cols-8"
               role="radiogroup"
               aria-label="Avatar selection"
             >
@@ -229,12 +229,12 @@ export default function JoinNamePage() {
                     setSelectedAvatar(emoji)
                   }}
                   className={`
-                    flex items-center justify-center rounded-lg text-2xl
-                    min-h-[44px] min-w-[44px] transition
+                    flex aspect-square w-full items-center justify-center rounded-lg
+                    text-xl sm:text-2xl transition
                     focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1
                     ${
                       selectedAvatar === emoji
-                        ? "bg-primary/20 ring-2 ring-primary scale-110"
+                        ? "bg-primary/20 ring-2 ring-primary"
                         : "bg-muted hover:bg-muted/80"
                     }
                   `}
@@ -262,7 +262,7 @@ export default function JoinNamePage() {
           <button
             type="submit"
             disabled={submitting || !displayName.trim() || !selectedAvatar}
-            className="w-full rounded-md bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            className="w-full rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
             {submitting ? "Joining…" : "Join Session"}
           </button>

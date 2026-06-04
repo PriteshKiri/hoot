@@ -21,9 +21,8 @@ export function QuestionList({ questions, eventId }: QuestionListProps) {
         <div className="text-4xl mb-4" aria-hidden="true">❓</div>
         <h2 className="text-lg font-semibold mb-2">No questions yet</h2>
         <p className="text-muted-foreground mb-6 max-w-sm text-sm">
-          Add your first question to get started. You can choose from multiple
-          question types including single-select, multi-select, open text, rating
-          scale, and image-based.
+          Add your first question to get started. Hoot supports single-select
+          and multi-select multiple-choice questions.
         </p>
         <Link
           href={`/events/${eventId}/questions/new`}
