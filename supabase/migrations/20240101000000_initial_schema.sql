@@ -210,3 +210,22 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW
   EXECUTE FUNCTION public.handle_new_user();
+
+
+-- =============================================================================
+-- increment_participant_score
+-- Atomically increments a participant's total_score. Called from the answers
+-- API route after each scored submission to avoid read-modify-write races
+-- when multiple participants answer simultaneously.
+-- =============================================================================
+CREATE OR REPLACE FUNCTION public.increment_participant_score(
+  p_participant_id uuid,
+  p_score integer
+)
+RETURNS void
+LANGUAGE sql
+AS $$
+  UPDATE public.session_participants
+  SET total_score = total_score + p_score
+  WHERE id = p_participant_id;
+$$;

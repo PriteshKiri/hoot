@@ -1,17 +1,19 @@
 # Hoot 🦉
 
-An open-source, real-time quiz and polling platform inspired by Kahoot and Mentimeter. Hosts create quiz decks, publish them with a shareable join code and QR code, then run live sessions where participants join on any device — no app install required.
+An open-source, self-hostable, real-time quiz and polling platform inspired by Kahoot and Mentimeter. Hosts create quiz decks, publish them with a shareable join code and QR code, then run live sessions where participants join on any device — no app install required.
+
+Hoot is a standard Next.js app backed by Supabase, so you can run it entirely on your own infrastructure: a Node host (or container) for the web app and a Supabase instance (Supabase Cloud or self-hosted) for the database, auth, storage, and realtime.
 
 ---
 
 ## Features
 
-- **Event authoring** — build quiz decks with single-select and multi-select multiple-choice questions
+- **Event authoring** — build quiz decks with five question types: single-select, multi-select, open text, rating scale, and image choice
 - **Publishing** — generate a 6-character join code and QR code; share a URL
 - **Live sessions** — real-time sync via Supabase Realtime (Broadcast + Presence)
 - **Speed-weighted scoring** — up to 1000 points per question, server-authoritative
 - **Leaderboard** — live rankings after each question and a final podium with confetti
-- **Analytics** — per-question response distribution, average response time, CSV export
+- **Analytics** — per-question response distribution, average response time, live word cloud for open-text, CSV export
 - **Theming** — 5+ built-in colour themes, custom colours/fonts, logo upload
 - **Mobile-first** — works on any browser, 320 px–2560 px viewports, 44 px touch targets
 
@@ -29,7 +31,7 @@ An open-source, real-time quiz and polling platform inspired by Kahoot and Menti
 | Realtime | Supabase Realtime (Broadcast + Presence) |
 | Storage | Supabase Storage (S3-compatible) |
 | Testing | Vitest 2.x + fast-check + Playwright |
-| Deployment | Vercel |
+| Deployment | Self-hosted (any Node 18+ host or container); Vercel also supported |
 
 ---
 
@@ -37,9 +39,10 @@ An open-source, real-time quiz and polling platform inspired by Kahoot and Menti
 
 ### Prerequisites
 
-- Node.js 18+
-- npm
-- A [Supabase](https://supabase.com) project
+- **Node.js 18+** and npm
+- A **Supabase** instance. Either:
+  - **Supabase Cloud** — create a free project at [supabase.com](https://supabase.com), or
+  - **Self-hosted Supabase** — run it locally via the [Supabase CLI](https://supabase.com/docs/guides/cli) (requires Docker), or on your own server via the [self-hosting guide](https://supabase.com/docs/guides/self-hosting).
 
 ### 1. Clone the repo
 
@@ -54,25 +57,25 @@ cd hoot
 npm install
 ```
 
-### 3. Configure environment variables
+### 3. Set up the Supabase database
 
-Copy the example and fill in your Supabase credentials:
+Hoot ships a single bundled SQL script at [`supabase/setup.sql`](supabase/setup.sql) that creates the full schema, Row Level Security policies, storage buckets, and an optional data-retention job. Apply it using whichever path matches your setup.
+
+**Option A — Hosted or self-hosted Supabase (SQL Editor):**
+
+1. Open your Supabase project's **SQL Editor**.
+2. Paste the contents of `supabase/setup.sql` and run it once on a fresh project.
+
+**Option B — Local Supabase via the CLI (Docker required):**
 
 ```bash
-cp .env.local.example .env.local
+npx supabase start          # boots Postgres, Auth, Storage, Realtime locally
+npx supabase db push        # applies the migrations in supabase/migrations/
 ```
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-```
+`supabase start` prints the local API URL and keys you'll use in the next step.
 
-> The service role key is used server-side only (API routes) and is never exposed to the client.
-
-### 4. Set up the database
-
-Run the SQL migrations in your Supabase project. The schema creates the following tables with RLS enabled:
+The setup creates these tables (all with RLS enabled):
 
 - `profiles` — admin accounts (linked to Supabase Auth)
 - `events` — quiz decks
@@ -84,6 +87,33 @@ Run the SQL migrations in your Supabase project. The schema creates the followin
 - `analytics_snapshots` — materialised per-question stats (written on session end)
 - `join_code_history` — tracks previously used join codes
 
+It also provisions two storage buckets — `question-images` (private) and `event-logos` (public) — and an optional `pg_cron` job that purges session data older than 90 days. If your Postgres doesn't have `pg_cron`, skip the final block of the script.
+
+> **Realtime:** Hoot relies on Supabase Realtime (Broadcast + Presence), which is enabled by default on Supabase Cloud and in the CLI/self-hosted stack. No extra configuration is required.
+
+### 4. Configure environment variables
+
+Copy the example and fill in the values for your Supabase instance:
+
+```bash
+cp .env.local.example .env.local
+```
+
+```env
+# From Supabase: Project Settings → API (or the output of `npx supabase start`)
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# Public base URL participants will reach. Used to build join URLs and QR codes
+# in server-rendered views. Defaults to http://localhost:3000 if unset.
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+> The **service role key** is used server-side only (API routes) and is never exposed to the client. Treat it like a password and never commit your real `.env.local`.
+
+> Set **`NEXT_PUBLIC_APP_URL`** to the externally reachable URL of your deployment (e.g. `https://hoot.example.com`). Join links and QR codes generated server-side use this value, so participants can't connect if it points at the wrong host.
+
 ### 5. Start the dev server
 
 ```bash
@@ -91,6 +121,65 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+---
+
+## Self-Hosting in Production
+
+Hoot is a standard Next.js application, so any host that can run Node 18+ works (a VM, a container, a PaaS, etc.).
+
+### 1. Build and start
+
+```bash
+npm install
+npm run build
+npm run start        # serves on port 3000 by default; override with PORT=8080
+```
+
+Run this behind a reverse proxy (nginx, Caddy, Traefik) that terminates TLS and forwards to the Node process. Make sure WebSocket connections are proxied through to Supabase — the browser talks to Supabase Realtime directly, so the only requirement is that clients can reach your Supabase URL.
+
+### 2. Required production environment
+
+Set the same variables as in step 4 above, but with production values:
+
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` — your production Supabase project.
+- `NEXT_PUBLIC_APP_URL` — your public HTTPS URL (e.g. `https://hoot.example.com`). **Note:** because this is a `NEXT_PUBLIC_` variable it is inlined at build time, so set it *before* running `npm run build`.
+
+### 3. Configure Supabase Auth URLs
+
+In your Supabase project (**Authentication → URL Configuration**), set the **Site URL** to your `NEXT_PUBLIC_APP_URL` and add it to the **Redirect URLs** allow-list so login, registration, and password-reset emails point at your domain.
+
+### 4. Self-hosted Supabase on a custom domain
+
+If you self-host Supabase on a domain other than `*.supabase.co`, update the image host allow-list in [`next.config.mjs`](next.config.mjs) so uploaded logos and question images render:
+
+```js
+images: {
+  remotePatterns: [
+    { protocol: "https", hostname: "supabase.example.com", pathname: "/storage/v1/object/**" },
+  ],
+}
+```
+
+### 5. (Optional) Run in Docker
+
+There is no Dockerfile in the repo, but a minimal one is straightforward:
+
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ARG NEXT_PUBLIC_APP_URL
+RUN npm run build
+EXPOSE 3000
+CMD ["npm", "run", "start"]
+```
+
+Pass the `NEXT_PUBLIC_*` values as build args (they're baked in at build time) and the `SUPABASE_SERVICE_ROLE_KEY` as a runtime secret.
 
 ---
 
@@ -129,7 +218,7 @@ hoot/
 
 ### For participants
 
-1. Go to `hoot.com/join` or scan the QR code
+1. Go to `<your-domain>/join` or scan the QR code shown on the presenter screen
 2. Enter the join code, pick a display name and emoji avatar
 3. Wait in the lobby until the host starts
 4. Answer questions on your device before the timer runs out
@@ -143,7 +232,7 @@ Points are awarded for correct answers based on speed:
 score = max(1, floor(1000 × (remaining_time / time_limit)))
 ```
 
-Scoring is calculated server-side to prevent manipulation. Multi-select questions require an exact match of all correct options for any points to be awarded.
+Scoring is calculated server-side to prevent manipulation. Multi-select questions require an exact match of all correct options for any points to be awarded. Open-text and rating-scale questions are poll-style and award no points.
 
 ---
 
@@ -153,6 +242,7 @@ Scoring is calculated server-side to prevent manipulation. Multi-select question
 |---|---|
 | `npm run dev` | Start dev server on http://localhost:3000 |
 | `npm run build` | Production build |
+| `npm run start` | Serve the production build (run after `npm run build`) |
 | `npm run lint` | Run ESLint |
 | `npm test` | Run unit tests (single run) |
 | `npm run test:watch` | Run unit tests in watch mode |

@@ -265,10 +265,17 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
   // Step 9: Update session_participants.total_score atomically using SQL increment
   // to avoid a read-modify-write race when multiple participants answer simultaneously
-  await supabase.rpc("increment_participant_score", {
+  const { error: scoreError } = await supabase.rpc("increment_participant_score", {
     p_participant_id: participant.id,
     p_score: scoreAwarded,
   })
+
+  if (scoreError) {
+    return NextResponse.json(
+      { error: { code: "SERVER_ERROR", message: "Failed to record score." } },
+      { status: 500 }
+    )
+  }
 
   // Step 10: Broadcast answer_count_updated
   const { count: answeredCount } = await supabase

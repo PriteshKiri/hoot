@@ -33,7 +33,7 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId: initi
   const [activeSessionId, setActiveSessionId] = useState<string | null | undefined>(initialActiveSessionId)
 
   const joinUrl = joinCode
-    ? `${typeof window !== "undefined" ? window.location.origin : process.env.NEXT_PUBLIC_APP_URL ?? "https://hoot-puce.vercel.app"}/join/${joinCode}`
+    ? `${typeof window !== "undefined" ? window.location.origin : process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/join/${joinCode}`
     : null
 
   async function handlePublish() {
