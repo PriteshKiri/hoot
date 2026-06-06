@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -38,16 +39,25 @@ export default function RegisterPage() {
       if (!res.ok) {
         if (res.status === 409) {
           // Requirement 1.6: indicate email already in use
-          setError("An account with this email address already exists.")
+          const msg = "An account with this email address already exists."
+          setError(msg)
+          toast.error(msg)
         } else {
-          setError(data?.error?.message ?? "Registration failed. Please try again.")
+          const msg = data?.error?.message ?? "Registration failed. Please try again."
+          setError(msg)
+          toast.error(msg)
         }
         return
       }
 
+      toast.success("Account created", {
+        description: "Check your email to confirm your account.",
+      })
       setSuccess(true)
     } catch {
-      setError("An unexpected error occurred. Please try again.")
+      const msg = "An unexpected error occurred. Please try again."
+      setError(msg)
+      toast.error(msg)
     } finally {
       setLoading(false)
     }

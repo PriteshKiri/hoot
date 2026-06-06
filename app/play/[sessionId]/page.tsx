@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { buildThemeStyle, type CustomTheme } from "@/lib/themes"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 
 interface SessionStatePayload {
@@ -73,6 +74,8 @@ export default function PlayPage() {
   const [currentQuestion, setCurrentQuestion] = useState<SessionStatePayload["currentQuestion"]>(null)
   const [questionStartedAt, setQuestionStartedAt] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [themeId, setThemeId] = useState<string | null>(null)
+  const [customTheme, setCustomTheme] = useState<CustomTheme | null>(null)
 
   // Answer submission state
   const [lastScoreAwarded, setLastScoreAwarded] = useState<number>(0)
@@ -107,6 +110,8 @@ export default function PlayPage() {
         const data = await res.json()
         setSessionTitle(data.session?.events?.title ?? "Quiz")
         setSessionStatus(data.session?.status ?? "lobby")
+        setThemeId(data.session?.events?.theme_id ?? null)
+        setCustomTheme((data.session?.events?.custom_theme as CustomTheme | null) ?? null)
       })
       .catch(() => setLoadError("Network error. Please refresh the page."))
 
@@ -117,6 +122,25 @@ export default function PlayPage() {
     if (storedAvatar) setAvatar(storedAvatar)
     if (storedParticipantId) setParticipantId(storedParticipantId)
   }, [sessionId, router])
+
+  // Apply the event's colour theme to this full-screen route by overriding the
+  // theme CSS variables on the document root. Restores the previous values on
+  // unmount so the theme stays scoped to the play screen.
+  useEffect(() => {
+    const style = buildThemeStyle({ themeId, customTheme })
+    const root = document.documentElement
+    const previous: Record<string, string> = {}
+    for (const [key, value] of Object.entries(style)) {
+      previous[key] = root.style.getPropertyValue(key)
+      root.style.setProperty(key, String(value))
+    }
+    return () => {
+      for (const key of Object.keys(style)) {
+        if (previous[key]) root.style.setProperty(key, previous[key])
+        else root.style.removeProperty(key)
+      }
+    }
+  }, [themeId, customTheme])
 
   // Subscribe to Realtime channel
   useEffect(() => {

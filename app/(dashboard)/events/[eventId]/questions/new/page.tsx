@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Clock, HelpCircle, ListChecks } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -133,15 +134,21 @@ export default function NewQuestionPage() {
         const apiError = body?.error
         if (apiError?.field) {
           setErrors({ [apiError.field as keyof FormErrors]: apiError.message })
+          toast.error(apiError.message ?? "Please fix the highlighted fields.")
         } else {
-          setErrors({ general: apiError?.message ?? "Failed to create question." })
+          const msg = apiError?.message ?? "Failed to create question."
+          setErrors({ general: msg })
+          toast.error(msg)
         }
         return
       }
 
+      toast.success("Question added")
       router.push(`/events/${eventId}`)
     } catch {
-      setErrors({ general: "An unexpected error occurred. Please try again." })
+      const msg = "An unexpected error occurred. Please try again."
+      setErrors({ general: msg })
+      toast.error(msg)
     } finally {
       setLoading(false)
     }

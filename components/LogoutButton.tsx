@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 
 /**
@@ -15,6 +16,9 @@ export function LogoutButton() {
     setLoading(true)
     try {
       await fetch("/api/v1/auth/logout", { method: "POST" })
+      toast.success("Signed out")
+    } catch {
+      toast.error("Failed to sign out.")
     } finally {
       router.push("/login")
       router.refresh()

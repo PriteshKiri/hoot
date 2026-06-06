@@ -2,8 +2,10 @@
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { QRCodeDisplay } from "@/components/QRCodeDisplay"
+import { buildThemeStyle, type CustomTheme } from "@/lib/themes"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 
 interface Participant {
@@ -24,6 +26,8 @@ interface SessionData {
     id: string
     title: string
     join_code: string | null
+    theme_id: string | null
+    custom_theme: CustomTheme | null
     questions: Array<{
       id: string
       position: number
@@ -130,6 +134,27 @@ export default function PresentPage() {
       .catch(() => setLoadError("Network error. Please refresh the page."))
   }, [sessionId])
 
+  // Apply the event's colour theme to this full-screen route by overriding the
+  // theme CSS variables on the document root. Restores the previous values on
+  // unmount so the theme stays scoped to the presenter screen.
+  const themeId = session?.events?.theme_id ?? null
+  const customTheme = session?.events?.custom_theme ?? null
+  useEffect(() => {
+    const style = buildThemeStyle({ themeId, customTheme })
+    const root = document.documentElement
+    const previous: Record<string, string> = {}
+    for (const [key, value] of Object.entries(style)) {
+      previous[key] = root.style.getPropertyValue(key)
+      root.style.setProperty(key, String(value))
+    }
+    return () => {
+      for (const key of Object.keys(style)) {
+        if (previous[key]) root.style.setProperty(key, previous[key])
+        else root.style.removeProperty(key)
+      }
+    }
+  }, [themeId, customTheme])
+
   // Subscribe to Realtime Presence + Broadcast
   useEffect(() => {
     const supabase = createClient()
@@ -227,7 +252,9 @@ export default function PresentPage() {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setStartError(data?.error?.message ?? "Failed to advance.")
+        const msg = data?.error?.message ?? "Failed to advance."
+        setStartError(msg)
+        toast.error(msg)
       } else {
         // Apply state locally in case the Realtime broadcast is delayed or missed
         const data = await res.json().catch(() => ({}))
@@ -259,7 +286,9 @@ export default function PresentPage() {
         }
       }
     } catch {
-      setStartError("Network error. Please try again.")
+      const msg = "Network error. Please try again."
+      setStartError(msg)
+      toast.error(msg)
     } finally {
       setAdvancing(false)
     }
@@ -360,8 +389,11 @@ export default function PresentPage() {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setStartError(data?.error?.message ?? "Failed to start quiz.")
+        const msg = data?.error?.message ?? "Failed to start quiz."
+        setStartError(msg)
+        toast.error(msg)
       } else {
+        toast.success("Quiz started")
         // Apply state locally in case the Realtime broadcast is delayed or missed
         const data = await res.json().catch(() => ({}))
         const updatedSession = data?.session
@@ -370,7 +402,9 @@ export default function PresentPage() {
         }
       }
     } catch {
-      setStartError("Network error. Please try again.")
+      const msg = "Network error. Please try again."
+      setStartError(msg)
+      toast.error(msg)
     } finally {
       setAdvancing(false)
     }
@@ -379,10 +413,20 @@ export default function PresentPage() {
   const handleEndSession = useCallback(async () => {
     if (!confirm("Are you sure you want to end this session?")) return
     try {
-      await fetch(`/api/v1/sessions/${sessionId}`, { method: "DELETE" })
+      const res = await fetch(`/api/v1/sessions/${sessionId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        const msg = data?.error?.message ?? "Failed to end session."
+        setStartError(msg)
+        toast.error(msg)
+        return
+      }
+      toast.success("Session ended")
       router.push("/dashboard")
     } catch {
-      setStartError("Failed to end session.")
+      const msg = "Failed to end session."
+      setStartError(msg)
+      toast.error(msg)
     }
   }, [sessionId, router])
 

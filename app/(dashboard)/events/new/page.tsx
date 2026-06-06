@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -83,15 +84,21 @@ export default function NewEventPage() {
         } else if (apiError?.field === "description") {
           setErrors({ description: apiError.message })
         } else {
-          setErrors({ general: apiError?.message ?? "Failed to create event." })
+          const msg = apiError?.message ?? "Failed to create event."
+          setErrors({ general: msg })
+          toast.error(msg)
         }
         return
       }
 
-      // Redirect to the new event's editor
+      toast.success("Event created", {
+        description: `"${body.event.title}" is ready to edit.`,
+      })
       router.push(`/events/${body.event.id}`)
     } catch {
-      setErrors({ general: "An unexpected error occurred. Please try again." })
+      const msg = "An unexpected error occurred. Please try again."
+      setErrors({ general: msg })
+      toast.error(msg)
     } finally {
       setLoading(false)
     }

@@ -3,6 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 
@@ -71,13 +72,11 @@ const QUESTION_TYPE_COLORS: Record<QuestionType, string> = {
 export function QuestionCard({ question, eventId }: QuestionCardProps) {
   const router = useRouter()
   const [deleting, setDeleting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   async function handleDelete() {
     if (!confirm(`Delete this question? This cannot be undone.`)) return
 
     setDeleting(true)
-    setError(null)
 
     try {
       const res = await fetch(
@@ -86,14 +85,15 @@ export function QuestionCard({ question, eventId }: QuestionCardProps) {
       )
 
       if (res.status === 204) {
+        toast.success("Question deleted")
         router.refresh()
         return
       }
 
       const body = await res.json()
-      setError(body?.error?.message ?? "Failed to delete question.")
+      toast.error(body?.error?.message ?? "Failed to delete question.")
     } catch {
-      setError("An unexpected error occurred.")
+      toast.error("An unexpected error occurred.")
     } finally {
       setDeleting(false)
     }
@@ -157,11 +157,6 @@ export function QuestionCard({ question, eventId }: QuestionCardProps) {
               )}
             </div>
 
-            {error && (
-              <p role="alert" className="mt-2 text-xs text-destructive">
-                {error}
-              </p>
-            )}
           </div>
 
           {/* Actions */}

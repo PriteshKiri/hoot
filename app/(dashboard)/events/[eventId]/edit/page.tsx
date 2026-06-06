@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState, FormEvent } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, Check, Sparkles } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   BUILT_IN_THEMES,
@@ -46,9 +48,9 @@ export default function EventEditPage() {
   const [event, setEvent] = useState<EventData | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
 
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
   const [selectedThemeId, setSelectedThemeId] = useState<string>("violet")
   const [customPrimary, setCustomPrimary] = useState("")
   const [selectedGradient, setSelectedGradient] = useState<string>("")
@@ -60,11 +62,13 @@ export default function EventEditPage() {
         const data = await res.json()
         const ev: EventData = data.event
         setEvent(ev)
+        setTitle(ev.title ?? "")
+        setDescription(ev.description ?? "")
         setSelectedThemeId(ev.theme_id ?? "violet")
         setCustomPrimary(ev.custom_theme?.primaryColor ?? "")
         setSelectedGradient(ev.custom_theme?.gradient ?? "")
       })
-      .catch(() => setError("Failed to load event."))
+      .catch(() => toast.error("Failed to load event."))
       .finally(() => setLoading(false))
   }, [eventId])
 
@@ -86,12 +90,27 @@ export default function EventEditPage() {
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault()
+
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle) {
+      toast.error("Event name is required.")
+      return
+    }
+    if (trimmedTitle.length > 100) {
+      toast.error("Event name must be 100 characters or fewer.")
+      return
+    }
+    if (description.length > 500) {
+      toast.error("Description must be 500 characters or fewer.")
+      return
+    }
+
     setSaving(true)
-    setError(null)
-    setSuccess(false)
 
     try {
       const body: Record<string, unknown> = {
+        title: trimmedTitle,
+        description: description.trim() || null,
         theme_id: selectedThemeId,
         custom_theme: customTheme,
       }
@@ -104,15 +123,20 @@ export default function EventEditPage() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setError(data?.error?.message ?? "Failed to save theme.")
+        toast.error(data?.error?.message ?? "Failed to save changes.")
         return
       }
 
-      setSuccess(true)
-      setTimeout(() => setSuccess(false), 3000)
-      // Refresh server-rendered pages (dashboard, event page) so cards show the
-      // newly saved theme without the user manually reloading.
+      toast.success("Changes saved", {
+        description: "Your event has been updated.",
+      })
+      // Return the user to the event page they came from, then refresh so the
+      // server-rendered event page (and dashboard) re-fetch and show the newly
+      // saved title, description, and theme instead of stale cached data.
+      router.push(`/events/${eventId}`)
       router.refresh()
+    } catch {
+      toast.error("An unexpected error occurred. Please try again.")
     } finally {
       setSaving(false)
     }
@@ -134,7 +158,7 @@ export default function EventEditPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold">Theme & Branding</h1>
+          <h1 className="text-2xl font-bold">Edit Event</h1>
           <p className="text-sm text-muted-foreground">{event?.title}</p>
         </div>
       </div>
@@ -149,7 +173,7 @@ export default function EventEditPage() {
             <Sparkles className="h-3.5 w-3.5" />
             Live Preview
           </div>
-          <h2 className="text-2xl font-bold drop-shadow-sm">{event?.title}</h2>
+          <h2 className="text-2xl font-bold drop-shadow-sm">{title || event?.title}</h2>
           <p className="text-sm opacity-90 mt-1">
             This is how your event header and cards will appear.
           </p>
@@ -167,6 +191,52 @@ export default function EventEditPage() {
       </Card>
 
       <form onSubmit={handleSave} className="space-y-6">
+        {/* Event details */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Event Details</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Update the event name and description shown to participants and on
+              your dashboard.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="event-title">
+                Event name{" "}
+                <span aria-hidden="true" className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="event-title"
+                type="text"
+                placeholder="e.g. Team Trivia Night"
+                maxLength={100}
+                required
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground text-right">
+                {title.length}/100
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="event-description">Description (optional)</Label>
+              <textarea
+                id="event-description"
+                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+                placeholder="A short description of your event…"
+                maxLength={500}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground text-right">
+                {description.length}/500
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Theme picker */}
         <Card>
           <CardHeader>
@@ -312,12 +382,6 @@ export default function EventEditPage() {
         </Card>
 
         {/* Actions */}
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        {success && (
-          <p role="status" className="text-sm text-green-600 flex items-center gap-1">
-            <Check className="h-4 w-4" /> Theme saved successfully.
-          </p>
-        )}
         <div className="flex justify-end gap-3">
           <Button
             type="button"
@@ -327,7 +391,7 @@ export default function EventEditPage() {
             Cancel
           </Button>
           <Button type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Save Theme"}
+            {saving ? "Saving…" : "Save Changes"}
           </Button>
         </div>
       </form>

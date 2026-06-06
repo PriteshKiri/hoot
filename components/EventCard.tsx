@@ -4,6 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Pencil, Trash2 } from "lucide-react"
+import { toast } from "sonner"
 import {
   Card,
   CardContent,
@@ -43,7 +44,6 @@ interface EventCardProps {
 export function EventCard({ event }: EventCardProps) {
   const router = useRouter()
   const [deleting, setDeleting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const formattedDate = new Date(event.created_at).toLocaleDateString(undefined, {
     year: "numeric",
@@ -62,7 +62,6 @@ export function EventCard({ event }: EventCardProps) {
     if (!confirm(`Delete "${event.title}"? This cannot be undone.`)) return
 
     setDeleting(true)
-    setError(null)
 
     try {
       const res = await fetch(`/api/v1/events/${event.id}`, {
@@ -70,6 +69,7 @@ export function EventCard({ event }: EventCardProps) {
       })
 
       if (res.status === 204) {
+        toast.success(`"${event.title}" deleted`)
         router.refresh()
         return
       }
@@ -77,12 +77,15 @@ export function EventCard({ event }: EventCardProps) {
       const body = await res.json()
 
       if (body?.error?.code === "SESSION_ACTIVE") {
-        setError("Cannot delete: an active session is running for this event.")
+        toast.error("Cannot delete event", {
+          description:
+            "An active session is running for this event. End it first.",
+        })
       } else {
-        setError(body?.error?.message ?? "Failed to delete event.")
+        toast.error(body?.error?.message ?? "Failed to delete event.")
       }
     } catch {
-      setError("An unexpected error occurred.")
+      toast.error("An unexpected error occurred.")
     } finally {
       setDeleting(false)
     }
@@ -112,11 +115,6 @@ export function EventCard({ event }: EventCardProps) {
           </p>
         ) : null}
         <p className="text-xs text-muted-foreground">Created {formattedDate}</p>
-        {error && (
-          <p role="alert" className="mt-2 text-xs text-destructive">
-            {error}
-          </p>
-        )}
       </CardContent>
 
       <CardFooter className="flex gap-2 pt-0">
@@ -125,7 +123,7 @@ export function EventCard({ event }: EventCardProps) {
           className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors h-9"
         >
           <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-          Edit Questions
+          Edit
         </Link>
         <Button
           variant="outline"

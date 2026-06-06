@@ -2,6 +2,7 @@
 
 import { useState, FormEvent, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
+import { toast } from "sonner"
 
 const AVATAR_OPTIONS = [
   "🦁", "🐯", "🐻", "🦊", "🐺", "🦝", "🐸", "🐧",
@@ -102,17 +103,20 @@ export default function JoinNamePage() {
 
       if (!res.ok) {
         const code = data?.error?.code
+        let msg: string
         if (code === "DISPLAY_NAME_TAKEN") {
-          setSubmitError("This name is already taken. Please choose a different name.")
+          msg = "This name is already taken. Please choose a different name."
         } else if (code === "SESSION_ALREADY_STARTED") {
-          setSubmitError("This session has already started. You can no longer join.")
+          msg = "This session has already started. You can no longer join."
         } else if (code === "SESSION_AT_CAPACITY") {
-          setSubmitError("This session is full (150 participants maximum).")
+          msg = "This session is full (150 participants maximum)."
         } else if (code === "JOIN_CODE_NOT_FOUND") {
-          setSubmitError("Invalid join code. Please go back and try again.")
+          msg = "Invalid join code. Please go back and try again."
         } else {
-          setSubmitError(data?.error?.message ?? "Failed to join. Please try again.")
+          msg = data?.error?.message ?? "Failed to join. Please try again."
         }
+        setSubmitError(msg)
+        toast.error(msg)
         return
       }
 
@@ -125,10 +129,12 @@ export default function JoinNamePage() {
         sessionStorage.setItem("hoot_participant_id", data.participantId)
       }
 
-      // Redirect to participant screen
+      toast.success(`Joined as ${data.displayName}`)
       router.push(`/play/${sessionId}`)
     } catch {
-      setSubmitError("Network error. Please check your connection and try again.")
+      const msg = "Network error. Please check your connection and try again."
+      setSubmitError(msg)
+      toast.error(msg)
     } finally {
       setSubmitting(false)
     }

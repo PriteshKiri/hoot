@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createServiceClient } from "@/lib/supabase/service"
 import { broadcastSessionEvent } from "@/lib/supabase/realtime"
+import { generateAnalyticsSnapshots } from "@/lib/analytics"
 
 type RouteContext = { params: Promise<{ sessionId: string }> }
 
@@ -38,6 +39,8 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
         id,
         title,
         join_code,
+        theme_id,
+        custom_theme,
         questions (
           id,
           position,
@@ -77,8 +80,9 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
  * Logic:
  *   1. Verify session belongs to the authenticated admin
  *   2. Update session: status = 'ended', ended_at = now()
- *   3. Broadcast session_state_changed { status: 'ended' } to disconnect all participants
- *   4. Return 204
+ *   3. Generate analytics snapshots for the ended session
+ *   4. Broadcast session_state_changed { status: 'ended' } to disconnect all participants
+ *   5. Return 204
  *
  * Requirements: 12.3
  */
@@ -138,7 +142,16 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
     )
   }
 
-  // Step 3: Broadcast session_state_changed to disconnect all participants
+  // Step 3: Generate analytics snapshots before responding so they are
+  // available when the admin opens the analytics page. Awaited (not
+  // fire-and-forget) to avoid the work being dropped in a serverless context.
+  try {
+    await generateAnalyticsSnapshots(sessionId)
+  } catch {
+    // Don't fail the end-session request if snapshot generation fails.
+  }
+
+  // Step 4: Broadcast session_state_changed to disconnect all participants
   await broadcastSessionEvent(sessionId, "session_state_changed", {
     status: "ended",
     currentQuestionIndex: null,
@@ -146,6 +159,6 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
     questionStartedAt: null,
   })
 
-  // Step 4: Return 204 No Content
+  // Step 5: Return 204 No Content
   return new NextResponse(null, { status: 204 })
 }

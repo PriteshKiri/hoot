@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { QRCodeDisplay } from "@/components/QRCodeDisplay"
 import { Button } from "@/components/ui/button"
 
@@ -27,7 +28,6 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId: initi
   const [unpublishLoading, setUnpublishLoading] = useState(false)
   const [sessionLoading, setSessionLoading] = useState(false)
   const [stopLoading, setStopLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   // Track activeSessionId in local state so ending a session updates the UI immediately
   const [activeSessionId, setActiveSessionId] = useState<string | null | undefined>(initialActiveSessionId)
 
@@ -37,7 +37,6 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId: initi
 
   async function handlePublish() {
     setPublishLoading(true)
-    setError(null)
     try {
       const res = await fetch(`/api/v1/events/${eventId}/publish`, {
         method: "POST",
@@ -46,12 +45,15 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId: initi
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data?.error?.message ?? "Failed to publish event.")
+        toast.error(data?.error?.message ?? "Failed to publish event.")
       } else {
+        toast.success("Event published", {
+          description: "Participants can now join with the code.",
+        })
         router.refresh()
       }
     } catch {
-      setError("An unexpected error occurred. Please try again.")
+      toast.error("An unexpected error occurred. Please try again.")
     } finally {
       setPublishLoading(false)
     }
@@ -59,7 +61,6 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId: initi
 
   async function handleUnpublish() {
     setUnpublishLoading(true)
-    setError(null)
     try {
       const res = await fetch(`/api/v1/events/${eventId}/publish`, {
         method: "POST",
@@ -68,12 +69,13 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId: initi
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data?.error?.message ?? "Failed to unpublish event.")
+        toast.error(data?.error?.message ?? "Failed to unpublish event.")
       } else {
+        toast.success("Event unpublished")
         router.refresh()
       }
     } catch {
-      setError("An unexpected error occurred. Please try again.")
+      toast.error("An unexpected error occurred. Please try again.")
     } finally {
       setUnpublishLoading(false)
     }
@@ -81,7 +83,6 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId: initi
 
   async function handleStartSession() {
     setSessionLoading(true)
-    setError(null)
     try {
       const res = await fetch("/api/v1/sessions", {
         method: "POST",
@@ -90,13 +91,14 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId: initi
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data?.error?.message ?? "Failed to start session.")
+        toast.error(data?.error?.message ?? "Failed to start session.")
       } else {
+        toast.success("Session started")
         setActiveSessionId(data.session.id)
         router.push(`/sessions/${data.session.id}/present`)
       }
     } catch {
-      setError("An unexpected error occurred. Please try again.")
+      toast.error("An unexpected error occurred. Please try again.")
     } finally {
       setSessionLoading(false)
     }
@@ -112,38 +114,39 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId: initi
     if (!activeSessionId) return
     if (!confirm("Are you sure you want to end this session? This cannot be undone.")) return
     setStopLoading(true)
-    setError(null)
     try {
       const res = await fetch(`/api/v1/sessions/${activeSessionId}`, {
         method: "DELETE",
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setError(data?.error?.message ?? "Failed to end session.")
+        toast.error(data?.error?.message ?? "Failed to end session.")
       } else {
+        toast.success("Session ended")
         // Clear local state immediately so the UI updates without waiting for a server round-trip
         setActiveSessionId(null)
         router.refresh()
       }
     } catch {
-      setError("An unexpected error occurred. Please try again.")
+      toast.error("An unexpected error occurred. Please try again.")
     } finally {
       setStopLoading(false)
+    }
+  }
+
+  async function handleCopyJoinUrl() {
+    if (!joinUrl) return
+    try {
+      await navigator.clipboard.writeText(joinUrl)
+      toast.success("Link copied to clipboard")
+    } catch {
+      toast.error("Failed to copy link.")
     }
   }
 
   return (
     <div className="rounded-lg border bg-card p-6 space-y-4">
       <h2 className="text-lg font-semibold">Publish</h2>
-
-      {error && (
-        <div
-          role="alert"
-          className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive"
-        >
-          {error}
-        </div>
-      )}
 
       {status !== "published" ? (
         // ── Draft state ──────────────────────────────────────────────────
@@ -209,7 +212,7 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId: initi
                 </code>
                 <button
                   type="button"
-                  onClick={() => navigator.clipboard.writeText(joinUrl)}
+                  onClick={handleCopyJoinUrl}
                   className="shrink-0 rounded-md border px-3 py-1.5 text-xs hover:bg-muted transition-colors"
                   aria-label="Copy shareable URL to clipboard"
                 >

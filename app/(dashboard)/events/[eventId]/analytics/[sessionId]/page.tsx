@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Download, ArrowLeft, Users, Clock, BarChart2 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -87,8 +88,9 @@ export default function AnalyticsPage() {
       a.download = `session-${sessionId}-results.csv`
       a.click()
       URL.revokeObjectURL(url)
+      toast.success("CSV downloaded")
     } catch {
-      alert("Failed to download CSV. Please try again.")
+      toast.error("Failed to download CSV. Please try again.")
     } finally {
       setDownloading(false)
     }

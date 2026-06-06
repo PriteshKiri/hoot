@@ -2,6 +2,7 @@
 
 import { useState, FormEvent } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 /**
  * Join code entry page.
@@ -36,20 +37,23 @@ export default function JoinPage() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
+        let msg: string
         if (res.status === 404) {
-          setError(
-            "No active session found for this code. Check the code and try again."
-          )
+          msg = "No active session found for this code. Check the code and try again."
         } else {
-          setError(data?.error?.message ?? "Something went wrong. Please try again.")
+          msg = data?.error?.message ?? "Something went wrong. Please try again."
         }
+        setError(msg)
+        toast.error(msg)
         return
       }
 
       // Redirect to the name/avatar selection page
       router.push(`/join/${trimmed}`)
     } catch {
-      setError("Network error. Please check your connection and try again.")
+      const msg = "Network error. Please check your connection and try again."
+      setError(msg)
+      toast.error(msg)
     } finally {
       setLoading(false)
     }

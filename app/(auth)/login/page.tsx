@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -37,14 +38,19 @@ export default function LoginPage() {
 
       if (signInError) {
         // Requirement 1.3: do not reveal which field is incorrect
-        setError("Invalid credentials. Please check your email and password.")
+        const msg = "Invalid credentials. Please check your email and password."
+        setError(msg)
+        toast.error(msg)
         return
       }
 
+      toast.success("Welcome back")
       router.push("/dashboard")
       router.refresh()
     } catch {
-      setError("An unexpected error occurred. Please try again.")
+      const msg = "An unexpected error occurred. Please try again."
+      setError(msg)
+      toast.error(msg)
     } finally {
       setLoading(false)
     }

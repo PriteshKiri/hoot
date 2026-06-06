@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -37,13 +38,20 @@ export default function ResetPasswordPage() {
       )
 
       if (resetError) {
-        setError("Failed to send reset email. Please try again.")
+        const msg = "Failed to send reset email. Please try again."
+        setError(msg)
+        toast.error(msg)
         return
       }
 
+      toast.success("Reset link sent", {
+        description: "Check your inbox for instructions.",
+      })
       setSuccess(true)
     } catch {
-      setError("An unexpected error occurred. Please try again.")
+      const msg = "An unexpected error occurred. Please try again."
+      setError(msg)
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
