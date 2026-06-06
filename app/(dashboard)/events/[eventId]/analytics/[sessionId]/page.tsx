@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Download, ArrowLeft, Users, Clock, BarChart2 } from "lucide-react"
+import { Download, ArrowLeft, Users, Clock, BarChart2, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -62,6 +62,7 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     fetch(`/api/v1/analytics/${sessionId}`)
@@ -95,6 +96,27 @@ export default function AnalyticsPage() {
       toast.error("Failed to download CSV. Please try again.")
     } finally {
       setDownloading(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!confirm("Delete this session and its analytics? This cannot be undone.")) {
+      return
+    }
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/v1/analytics/${sessionId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast.error(body?.error?.message ?? "Failed to delete session.")
+        return
+      }
+      toast.success("Session deleted")
+      router.push(`/events/${eventId}`)
+    } catch {
+      toast.error("An unexpected error occurred. Please try again.")
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -134,19 +156,34 @@ export default function AnalyticsPage() {
             </p>
           </div>
         </div>
-        <Button onClick={handleDownloadCsv} disabled={downloading} variant="outline">
-          {downloading ? (
-            <>
-              <Spinner size="sm" />
-              Downloading…
-            </>
-          ) : (
-            <>
-              <Download className="mr-2 h-4 w-4" />
-              Export CSV
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={handleDownloadCsv} disabled={downloading} variant="outline">
+            {downloading ? (
+              <>
+                <Spinner size="sm" />
+                Downloading…
+              </>
+            ) : (
+              <>
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </>
+            )}
+          </Button>
+          <Button onClick={handleDelete} disabled={deleting} variant="destructive">
+            {deleting ? (
+              <>
+                <Spinner size="sm" className="text-destructive-foreground" />
+                Deleting…
+              </>
+            ) : (
+              <>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Per-question cards */}

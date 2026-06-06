@@ -95,3 +95,66 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
     snapshots: snapshots ?? [],
   })
 }
+
+/**
+ * DELETE /api/v1/analytics/[sessionId]
+ *
+ * Permanently deletes a past session along with its analytics. Deleting the
+ * session row cascades to analytics_snapshots, participant_answers, and
+ * session_participants (see migrations 20240101000004 / 000006).
+ *
+ * Authenticated admin only; the session must belong to the admin.
+ */
+export async function DELETE(_request: NextRequest, { params }: RouteContext) {
+  const { sessionId } = await params
+
+  const authClient = await createClient()
+  const {
+    data: { user },
+    error: authError,
+  } = await authClient.auth.getUser()
+
+  if (authError || !user) {
+    return NextResponse.json(
+      { error: { code: "UNAUTHORIZED", message: "Authentication required." } },
+      { status: 401 }
+    )
+  }
+
+  const supabase = createServiceClient()
+
+  // Verify session belongs to this admin
+  const { data: session, error: sessionError } = await supabase
+    .from("sessions")
+    .select("id, admin_id")
+    .eq("id", sessionId)
+    .single()
+
+  if (sessionError || !session) {
+    return NextResponse.json(
+      { error: { code: "SESSION_NOT_FOUND", message: "Session not found." } },
+      { status: 404 }
+    )
+  }
+
+  if (session.admin_id !== user.id) {
+    return NextResponse.json(
+      { error: { code: "FORBIDDEN", message: "You do not have access to this session." } },
+      { status: 403 }
+    )
+  }
+
+  const { error: deleteError } = await supabase
+    .from("sessions")
+    .delete()
+    .eq("id", sessionId)
+
+  if (deleteError) {
+    return NextResponse.json(
+      { error: { code: "DELETE_FAILED", message: "Failed to delete session." } },
+      { status: 500 }
+    )
+  }
+
+  return new NextResponse(null, { status: 204 })
+}

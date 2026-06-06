@@ -3,6 +3,7 @@ import Link from "next/link"
 import { createClient } from "@/lib/supabase/server"
 import { QuestionList } from "@/components/QuestionList"
 import { PublishPanel } from "@/components/PublishPanel"
+import { PastSessions } from "@/components/PastSessions"
 import type { Question } from "@/components/QuestionCard"
 import { buildThemeStyle, resolveGradient, type CustomTheme } from "@/lib/themes"
 
@@ -178,35 +179,7 @@ export default async function EventEditorPage({ params }: PageProps) {
           {endedSessions && endedSessions.length > 0 && (
             <section className="space-y-3">
               <h2 className="text-lg font-semibold">Past Sessions</h2>
-              <div className="rounded-lg border divide-y bg-card">
-                {endedSessions.map((session, i) => {
-                  const endedAt = session.ended_at
-                    ? new Date(session.ended_at).toLocaleString(undefined, {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })
-                    : "Unknown"
-                  return (
-                    <div key={session.id} className="flex items-center justify-between px-4 py-3">
-                      <div>
-                        <p className="text-sm font-medium">Session {endedSessions.length - i}</p>
-                        <p className="text-xs text-muted-foreground">Ended {endedAt}</p>
-                      </div>
-                      <Link
-                        href={`/events/${eventId}/analytics/${session.id}`}
-                        className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <line x1="18" y1="20" x2="18" y2="10"/>
-                          <line x1="12" y1="20" x2="12" y2="4"/>
-                          <line x1="6" y1="20" x2="6" y2="14"/>
-                        </svg>
-                        View Analytics
-                      </Link>
-                    </div>
-                  )
-                })}
-              </div>
+              <PastSessions eventId={eventId} sessions={endedSessions} />
             </section>
           )}
         </div>
