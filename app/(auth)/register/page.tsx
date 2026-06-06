@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Card,
   CardContent,
@@ -136,7 +137,14 @@ export default function RegisterPage() {
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creating account…" : "Create account"}
+            {loading ? (
+              <>
+                <Spinner size="sm" className="text-primary-foreground" />
+                Creating account…
+              </>
+            ) : (
+              "Create account"
+            )}
           </Button>
           <p className="text-center text-sm text-muted-foreground">
             Already have an account?{" "}

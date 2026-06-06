@@ -3,6 +3,7 @@
 import { useState, FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { Spinner } from "@/components/ui/spinner"
 
 /**
  * Join code entry page.
@@ -112,9 +113,16 @@ export default function JoinPage() {
           <button
             type="submit"
             disabled={loading || code.length === 0}
-            className="w-full rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
-            {loading ? "Looking up…" : "Join"}
+            {loading ? (
+              <>
+                <Spinner size="sm" className="text-primary-foreground" />
+                Looking up…
+              </>
+            ) : (
+              "Join"
+            )}
           </button>
         </form>
       </div>

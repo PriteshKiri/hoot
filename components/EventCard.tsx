@@ -11,6 +11,7 @@ import {
   CardFooter,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import {
   buildThemeStyle,
   resolveGradient,
@@ -134,7 +135,10 @@ export function EventCard({ event }: EventCardProps) {
           aria-label={`Delete event: ${event.title}`}
         >
           {deleting ? (
-            "Deleting…"
+            <>
+              <Spinner size="sm" />
+              Deleting…
+            </>
           ) : (
             <>
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { QRCodeDisplay } from "@/components/QRCodeDisplay"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 
 interface PublishPanelProps {
   eventId: string
@@ -159,7 +160,14 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId: initi
             disabled={publishLoading}
             className="bg-green-600 hover:bg-green-700 text-white"
           >
-            {publishLoading ? "Publishing…" : "Publish Event"}
+            {publishLoading ? (
+              <>
+                <Spinner size="sm" className="text-white" />
+                Publishing…
+              </>
+            ) : (
+              "Publish Event"
+            )}
           </Button>
         </div>
       ) : (
@@ -251,7 +259,14 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId: initi
                   onClick={handleStopSession}
                   disabled={stopLoading}
                 >
-                  {stopLoading ? "Ending…" : "End Session"}
+                  {stopLoading ? (
+                    <>
+                      <Spinner size="sm" className="text-destructive-foreground" />
+                      Ending…
+                    </>
+                  ) : (
+                    "End Session"
+                  )}
                 </Button>
               </>
             ) : (
@@ -260,7 +275,14 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId: initi
                 disabled={sessionLoading}
                 className="bg-primary text-primary-foreground"
               >
-                {sessionLoading ? "Starting…" : "Start Session"}
+                {sessionLoading ? (
+                  <>
+                    <Spinner size="sm" className="text-primary-foreground" />
+                    Starting…
+                  </>
+                ) : (
+                  "Start Session"
+                )}
               </Button>
             )}
             <Button
@@ -269,7 +291,14 @@ export function PublishPanel({ eventId, status, joinCode, activeSessionId: initi
               disabled={unpublishLoading || !!activeSessionId}
               title={activeSessionId ? "End the active session before unpublishing" : undefined}
             >
-              {unpublishLoading ? "Unpublishing…" : "Unpublish"}
+              {unpublishLoading ? (
+                <>
+                  <Spinner size="sm" />
+                  Unpublishing…
+                </>
+              ) : (
+                "Unpublish"
+              )}
             </Button>
           </div>
 

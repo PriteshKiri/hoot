@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Spinner } from "@/components/ui/spinner"
+import { LoadingScreen } from "@/components/ui/loading-screen"
 import {
   BUILT_IN_THEMES,
   GRADIENT_PRESETS,
@@ -143,11 +145,7 @@ export default function EventEditPage() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-muted-foreground text-sm">Loading…</p>
-      </div>
-    )
+    return <LoadingScreen variant="section" label="Loading event…" />
   }
 
   return (
@@ -391,7 +389,14 @@ export default function EventEditPage() {
             Cancel
           </Button>
           <Button type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Save Changes"}
+            {saving ? (
+              <>
+                <Spinner size="sm" className="text-primary-foreground" />
+                Saving…
+              </>
+            ) : (
+              "Save Changes"
+            )}
           </Button>
         </div>
       </form>

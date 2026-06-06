@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 
 /**
  * Client component that calls POST /api/v1/auth/logout and redirects to /login.
@@ -33,7 +34,14 @@ export function LogoutButton() {
       onClick={handleLogout}
       disabled={loading}
     >
-      {loading ? "Signing out…" : "Sign out"}
+      {loading ? (
+        <>
+          <Spinner size="sm" />
+          Signing out…
+        </>
+      ) : (
+        "Sign out"
+      )}
     </Button>
   )
 }

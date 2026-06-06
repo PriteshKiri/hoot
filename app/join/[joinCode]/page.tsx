@@ -3,6 +3,8 @@
 import { useState, FormEvent, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { toast } from "sonner"
+import { LoadingScreen } from "@/components/ui/loading-screen"
+import { Spinner } from "@/components/ui/spinner"
 
 const AVATAR_OPTIONS = [
   "🦁", "🐯", "🐻", "🦊", "🐺", "🦝", "🐸", "🐧",
@@ -142,14 +144,7 @@ export default function JoinNamePage() {
 
   // Loading state while resolving join code
   if (lookupLoading) {
-    return (
-      <div className="min-h-[100dvh] flex items-center justify-center bg-background px-4">
-        <div className="text-center space-y-3">
-          <div className="text-4xl animate-pulse" aria-hidden="true">🦉</div>
-          <p className="text-muted-foreground">Looking up session…</p>
-        </div>
-      </div>
-    )
+    return <LoadingScreen label="Looking up session…" />
   }
 
   // Error state if session not found
@@ -268,9 +263,16 @@ export default function JoinNamePage() {
           <button
             type="submit"
             disabled={submitting || !displayName.trim() || !selectedAvatar}
-            className="w-full rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
-            {submitting ? "Joining…" : "Join Session"}
+            {submitting ? (
+              <>
+                <Spinner size="sm" className="text-primary-foreground" />
+                Joining…
+              </>
+            ) : (
+              "Join Session"
+            )}
           </button>
         </form>
       </div>

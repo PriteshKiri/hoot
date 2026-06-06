@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { QRCodeDisplay } from "@/components/QRCodeDisplay"
+import { LoadingScreen } from "@/components/ui/loading-screen"
+import { Spinner } from "@/components/ui/spinner"
 import { buildThemeStyle, type CustomTheme } from "@/lib/themes"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 
@@ -454,14 +456,7 @@ export default function PresentPage() {
   }
 
   if (!session) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center space-y-3">
-          <div className="text-4xl animate-pulse" aria-hidden="true">🦉</div>
-          <p className="text-muted-foreground">Loading session…</p>
-        </div>
-      </div>
-    )
+    return <LoadingScreen label="Loading session…" />
   }
 
   // ── Countdown ──────────────────────────────────────────────────────────────
@@ -515,11 +510,8 @@ export default function PresentPage() {
     if (!resultsData) {
       return (
         <div className="min-h-screen flex flex-col bg-background">
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center space-y-3">
-              <div className="text-4xl animate-pulse" aria-hidden="true">📊</div>
-              <p className="text-muted-foreground">Loading results…</p>
-            </div>
+          <div className="flex-1">
+            <LoadingScreen variant="section" label="Loading results…" emoji="📊" />
           </div>
           <SessionControls onNext={handleAdvance} advancing={advancing} error={startError} showNext nextLabel="Show Leaderboard →" />
         </div>
@@ -539,14 +531,7 @@ export default function PresentPage() {
   if (sessionStatus === "leaderboard") {
     if (!leaderboardData) {
       // Status arrived (via local fallback) but broadcast hasn't yet — show a brief loader
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-background">
-          <div className="text-center space-y-3">
-            <div className="text-4xl animate-pulse" aria-hidden="true">🏆</div>
-            <p className="text-muted-foreground">Loading leaderboard…</p>
-          </div>
-        </div>
-      )
+      return <LoadingScreen label="Loading leaderboard…" emoji="🏆" />
     }
     const nextLabel = isLastQuestion ? "Show Final Results →" : "Next Question →"
     return (
@@ -560,14 +545,7 @@ export default function PresentPage() {
   // ── Final Leaderboard ──────────────────────────────────────────────────────
   if (sessionStatus === "final_leaderboard") {
     if (!leaderboardData) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-background">
-          <div className="text-center space-y-3">
-            <div className="text-4xl animate-pulse" aria-hidden="true">🏆</div>
-            <p className="text-muted-foreground">Loading final results…</p>
-          </div>
-        </div>
-      )
+      return <LoadingScreen label="Loading final results…" emoji="🏆" />
     }
     return (
       <div className="min-h-screen flex flex-col bg-background">
@@ -640,8 +618,15 @@ export default function PresentPage() {
             <div className="space-y-2">
               {startError && <p role="alert" className="text-sm text-destructive text-center">{startError}</p>}
               <button onClick={handleStartQuiz} disabled={participantCount === 0 || advancing} aria-disabled={participantCount === 0 || advancing}
-                className="w-full rounded-xl bg-primary px-6 py-4 text-base font-bold text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
-                {advancing ? "Starting…" : "Start Quiz"}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-4 text-base font-bold text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
+                {advancing ? (
+                  <>
+                    <Spinner size="sm" className="text-primary-foreground" />
+                    Starting…
+                  </>
+                ) : (
+                  "Start Quiz"
+                )}
               </button>
               {participantCount === 0 && <p className="text-xs text-muted-foreground text-center" role="status">Waiting for at least 1 participant to join</p>}
             </div>
@@ -976,8 +961,15 @@ function SessionControls({
       <div className="flex justify-end gap-3 max-w-3xl mx-auto">
         {showNext && onNext && (
           <button onClick={onNext} disabled={advancing}
-            className="rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition">
-            {advancing ? "Loading…" : (nextLabel ?? "Next →")}
+            className="flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition">
+            {advancing ? (
+              <>
+                <Spinner size="sm" className="text-primary-foreground" />
+                Loading…
+              </>
+            ) : (
+              nextLabel ?? "Next →"
+            )}
           </button>
         )}
         {showEnd && onEnd && (

@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Card,
   CardContent,
@@ -186,7 +187,14 @@ export default function NewEventPage() {
 
           <CardFooter className="flex gap-3">
             <Button type="submit" disabled={loading} className="flex-1">
-              {loading ? "Creating…" : "Create Event"}
+              {loading ? (
+                <>
+                  <Spinner size="sm" className="text-primary-foreground" />
+                  Creating…
+                </>
+              ) : (
+                "Create Event"
+              )}
             </Button>
             <Link
               href="/dashboard"

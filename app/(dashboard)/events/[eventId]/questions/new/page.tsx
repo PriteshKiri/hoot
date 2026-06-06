@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Spinner } from "@/components/ui/spinner"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { QuestionTypeSelector } from "@/components/QuestionTypeSelector"
 import {
@@ -321,7 +322,14 @@ export default function NewQuestionPage() {
                 Cancel
               </Link>
               <Button type="submit" disabled={loading} className="sm:min-w-[160px]">
-                {loading ? "Saving…" : "Save Changes"}
+                {loading ? (
+                  <>
+                    <Spinner size="sm" className="text-primary-foreground" />
+                    Saving…
+                  </>
+                ) : (
+                  "Save Changes"
+                )}
               </Button>
             </div>
           </div>

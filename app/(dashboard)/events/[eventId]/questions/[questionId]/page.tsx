@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
+import { LoadingScreen } from "@/components/ui/loading-screen"
 import { QuestionTypeSelector } from "@/components/QuestionTypeSelector"
 import {
   AnswerOptionEditor,
@@ -214,9 +216,7 @@ export default function EditQuestionPage() {
             Back to Event
           </Link>
         </div>
-        <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
-          Loading question…
-        </div>
+        <LoadingScreen variant="section" label="Loading question…" emoji="❓" />
       </div>
     )
   }
@@ -408,7 +408,14 @@ export default function EditQuestionPage() {
                 Cancel
               </Link>
               <Button type="submit" disabled={loading} className="sm:min-w-[160px]">
-                {loading ? "Saving…" : "Save Changes"}
+                {loading ? (
+                  <>
+                    <Spinner size="sm" className="text-primary-foreground" />
+                    Saving…
+                  </>
+                ) : (
+                  "Save Changes"
+                )}
               </Button>
             </div>
           </div>

@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Spinner } from "@/components/ui/spinner"
+import { LoadingScreen } from "@/components/ui/loading-screen"
 import {
   Card,
   CardContent,
@@ -23,6 +25,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // Kept true from a successful sign-in until the dashboard route takes over,
+  // so the user never sees a blank screen between the toast and the dashboard.
+  const [redirecting, setRedirecting] = useState(false)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -41,9 +46,14 @@ export default function LoginPage() {
         const msg = "Invalid credentials. Please check your email and password."
         setError(msg)
         toast.error(msg)
+        setLoading(false)
         return
       }
 
+      // Success: hold the full-screen loader until /dashboard renders. We
+      // intentionally do not clear `loading`/`redirecting` here, so the form
+      // stays hidden through the navigation.
+      setRedirecting(true)
       toast.success("Welcome back")
       router.push("/dashboard")
       router.refresh()
@@ -51,9 +61,18 @@ export default function LoginPage() {
       const msg = "An unexpected error occurred. Please try again."
       setError(msg)
       toast.error(msg)
-    } finally {
       setLoading(false)
     }
+  }
+
+  if (redirecting) {
+    return (
+      <LoadingScreen
+        variant="overlay"
+        label="Taking you to your dashboard…"
+        hint="Hang tight, we're getting things ready."
+      />
+    )
   }
 
   return (
@@ -108,7 +127,14 @@ export default function LoginPage() {
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Signing in…" : "Sign in"}
+            {loading ? (
+              <>
+                <Spinner size="sm" className="text-primary-foreground" />
+                Signing in…
+              </>
+            ) : (
+              "Sign in"
+            )}
           </Button>
         </CardFooter>
       </form>

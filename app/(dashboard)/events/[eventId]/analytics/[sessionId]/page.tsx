@@ -6,6 +6,8 @@ import { Download, ArrowLeft, Users, Clock, BarChart2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { LoadingScreen } from "@/components/ui/loading-screen"
+import { Spinner } from "@/components/ui/spinner"
 
 interface AnswerOption {
   id: string
@@ -97,11 +99,7 @@ export default function AnalyticsPage() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-muted-foreground text-sm">Loading analytics…</div>
-      </div>
-    )
+    return <LoadingScreen variant="section" label="Loading analytics…" emoji="📊" />
   }
 
   if (error) {
@@ -137,8 +135,17 @@ export default function AnalyticsPage() {
           </div>
         </div>
         <Button onClick={handleDownloadCsv} disabled={downloading} variant="outline">
-          <Download className="mr-2 h-4 w-4" />
-          {downloading ? "Downloading…" : "Export CSV"}
+          {downloading ? (
+            <>
+              <Spinner size="sm" />
+              Downloading…
+            </>
+          ) : (
+            <>
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </>
+          )}
         </Button>
       </div>
 

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { LoadingScreen } from "@/components/ui/loading-screen"
 import { buildThemeStyle, type CustomTheme } from "@/lib/themes"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 
@@ -388,13 +389,10 @@ export default function PlayPage() {
   if (sessionStatus === "leaderboard") {
     if (!leaderboardData) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-background">
+        <>
           {reconnectionBanner}
-          <div className="text-center space-y-3">
-            <div className="text-4xl animate-pulse" aria-hidden="true">🏆</div>
-            <p className="text-muted-foreground">Loading leaderboard…</p>
-          </div>
-        </div>
+          <LoadingScreen label="Loading leaderboard…" emoji="🏆" />
+        </>
       )
     }
     return <ParticipantLeaderboardView entries={leaderboardData.entries} participantId={participantId} isFinal={false} />
@@ -403,13 +401,10 @@ export default function PlayPage() {
   if (sessionStatus === "final_leaderboard") {
     if (!leaderboardData) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-background">
+        <>
           {reconnectionBanner}
-          <div className="text-center space-y-3">
-            <div className="text-4xl animate-pulse" aria-hidden="true">🏆</div>
-            <p className="text-muted-foreground">Loading final results…</p>
-          </div>
-        </div>
+          <LoadingScreen label="Loading final results…" emoji="🏆" />
+        </>
       )
     }
     return <ParticipantLeaderboardView entries={leaderboardData.entries} participantId={participantId} isFinal={true} />

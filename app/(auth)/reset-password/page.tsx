@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Card,
   CardContent,
@@ -113,7 +114,14 @@ export default function ResetPasswordPage() {
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Sending…" : "Send reset link"}
+            {loading ? (
+              <>
+                <Spinner size="sm" className="text-primary-foreground" />
+                Sending…
+              </>
+            ) : (
+              "Send reset link"
+            )}
           </Button>
           <p className="text-center text-sm text-muted-foreground">
             Remember your password?{" "}
