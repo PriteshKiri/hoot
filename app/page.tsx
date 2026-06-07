@@ -8,6 +8,7 @@ import {
   Github,
   Heart,
   Palette,
+  PlayCircle,
   QrCode,
   RefreshCw,
   ShieldCheck,
@@ -21,6 +22,8 @@ import {
 } from "lucide-react"
 
 const GITHUB_URL = "https://github.com/PriteshKiri/hoot"
+const DEMO_VIDEO_ID = "25xuEJ8hzqY"
+const DEMO_VIDEO_URL = `https://www.youtube.com/watch?v=${DEMO_VIDEO_ID}`
 
 const FEATURES = [
   {
@@ -201,6 +204,54 @@ export default async function Home() {
             </div>
 
             <HeroMock />
+          </div>
+        </div>
+      </section>
+
+      {/* ───────────────────── DEMO ───────────────────── */}
+      <section id="demo" className="relative py-24">
+        <div className="container mx-auto max-w-5xl px-6">
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-primary">
+              <PlayCircle className="h-4 w-4" />
+              Demo
+            </p>
+            <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
+              See Hoot in action.
+            </h2>
+            <p className="mt-4 text-base text-muted-foreground">
+              A quick walkthrough of building a deck, sharing the join code, and
+              running a live session end to end.
+            </p>
+          </div>
+
+          <div className="relative mt-12">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 -top-8 mx-auto h-40 max-w-3xl rounded-full bg-primary/20 blur-3xl"
+            />
+            <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
+              <iframe
+                className="absolute inset-0 h-full w-full"
+                src={`https://www.youtube-nocookie.com/embed/${DEMO_VIDEO_ID}`}
+                title="Hoot demo"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+          </div>
+
+          <div className="mt-6 text-center">
+            <Link
+              href={DEMO_VIDEO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition hover:text-foreground"
+            >
+              Watch on YouTube
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
           </div>
         </div>
       </section>
@@ -458,6 +509,9 @@ function SiteHeader({ isLoggedIn }: { isLoggedIn: boolean }) {
           aria-label="Primary"
           className="hidden items-center gap-7 text-sm text-muted-foreground md:flex"
         >
+          <a href="#demo" className="transition hover:text-foreground">
+            Demo
+          </a>
           <a href="#features" className="transition hover:text-foreground">
             Features
           </a>
@@ -681,6 +735,9 @@ function SiteFooter() {
             aria-label="Footer"
             className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground"
           >
+            <a href="#demo" className="hover:text-foreground">
+              Demo
+            </a>
             <a href="#features" className="hover:text-foreground">
               Features
             </a>
