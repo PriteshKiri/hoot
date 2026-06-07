@@ -6,6 +6,14 @@ Hoot is a standard Next.js app backed by Supabase, so you can run it entirely on
 
 ---
 
+## Demo
+
+[![Watch the Hoot demo](https://img.youtube.com/vi/25xuEJ8hzqY/maxresdefault.jpg)](https://www.youtube.com/watch?v=25xuEJ8hzqY)
+
+> ▶️ Click the thumbnail above to watch the demo on YouTube.
+
+---
+
 ## Features
 
 - **Event authoring** — build quiz decks with five question types: single-select, multi-select, open text, rating scale, and image choice
